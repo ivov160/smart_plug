@@ -18,31 +18,16 @@
 #endif
 
 /**
- * @brief Порт для http
+ * @brief версия сервера
  */
-#define WEB_SERVER_PORT 80
-/**
- * @brief Порт для https
- */
-#define WEB_SERVER_SSL_PORT 443
+#define SERVER_VERSION 0.1
+
+/**< Find the maximum of 2 numbers. */
+#define max(a,b) ((a)>(b)?(a):(b))  
 
 /**
- * @brief Максимальное количество одновременных подключений
+ * @brief Макрос для подсчета длины const char* во время компиляции
  */
-#define CONNECTION_POOL_SIZE 1
-
-#define max(a,b) ((a)>(b)?(a):(b))  /**< Find the maximum of 2 numbers. */
-
-/**
- * @brief Время на обработку запроса millisecond
- */
-#define STOP_TIMER 120000
-
-/**
- * @brief Размер буфера приемки
- */
-#define RECV_BUF_SIZE 2048
-
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
 /**
@@ -69,16 +54,13 @@ struct query
 	uint32_t uri_length;
 	
 	struct query_pair** request_headers;
-	struct query_pair** params;
+	struct query_pair** get_params;
+	struct query_pair** post_params;
 
 	char* body;
 	uint32_t body_length;
 
-	short response_status;
-
-	struct query_pair* response_headers;
-
-	char* response_body;
+	char response_body[SEND_BUF_SIZE];
 	uint32_t response_body_length;
 };
 
@@ -118,6 +100,8 @@ LOCAL struct connection* connection_list[CONNECTION_POOL_SIZE];
 LOCAL xQueueHandle QueueStop = NULL;
 LOCAL xQueueHandle RCVQueueStop = NULL;
 
+LOCAL void webserver_conn_watcher(struct connection* pconnection);
+
 /**
  * @brief Метод для создания объекта запроса
  *
@@ -137,13 +121,11 @@ LOCAL void init_query(struct connection *connection)
 		connection->query->body = NULL;
 		connection->query->body_length = 0;
 
-		connection->query->response_status = 404;
-
-		connection->query->response_body = NULL;
-		connection->query->response_body_length = 0;
-
 		connection->query->request_headers = NULL;
-		connection->query->response_headers = NULL;
+		connection->query->get_params = NULL;
+		connection->query->post_params = NULL;
+
+		connection->query->response_body_length = 0;
 	}
 }
 
@@ -154,20 +136,33 @@ LOCAL void cleanup_query(struct query *query)
 {
 	if(query != NULL)
 	{
-		for(struct query_pair** iter = query->request_headers; *iter != NULL; ++iter)
+		if(query->request_headers != NULL)
 		{
-			free((struct query_pair*)(*iter));
+			for(struct query_pair** iter = query->request_headers; *iter != NULL; ++iter)
+			{
+				free((struct query_pair*)(*iter));
+			}
 		}
 
-		for(struct query_pair** iter = query->params; *iter != NULL; ++iter)
+		if(query->get_params != NULL)
 		{
-			free((struct query_pair*)(*iter));
+			for(struct query_pair** iter = query->get_params; *iter != NULL; ++iter)
+			{
+				free((struct query_pair*)(*iter));
+			}
 		}
 
-		free(query->params);
+		if(query->post_params != NULL)
+		{
+			for(struct query_pair** iter = query->post_params; *iter != NULL; ++iter)
+			{
+				free((struct query_pair*)(*iter));
+			}
+		}
+
+		free(query->get_params);
+		free(query->post_params);
 		free(query->request_headers);
-		free(query->response_body);
-		free(query->response_headers);
 		free(query);
 	}
 }
@@ -191,7 +186,7 @@ LOCAL void connection_pool_init(void)
     connections.size = 0; 
     connections.data = connection_list;
 
-    WS_DEBUG("C > multi_conn_init ok!\n");
+    WS_DEBUG("webserver: connection pool init ok!\n");
 }
 
 /**
@@ -210,6 +205,31 @@ LOCAL void accept_connection(uint8_t index, struct connections_pool* pool, int32
 	{
 		WS_DEBUG("webserver: accept_connection invalid index: %i\n", index);
 	}
+}
+
+LOCAL uint32_t connection_send_data(uint8_t index, struct connections_pool* pool)
+{
+	uint32_t writed = 0;
+	if(pool != NULL && index < CONNECTION_POOL_SIZE)
+	{
+		struct connection* connection = pool->data[index];
+
+		if(connection->query != NULL)
+		{
+			os_timer_disarm((os_timer_t *)&connection->stop_watch);
+
+			if (connection->query->response_body_length != 0)
+			{
+				writed = write(connection->socketfd, (uint8_t*)connection->query->response_body, connection->query->response_body_length);
+				connection->query->response_body_length = 0;
+			}
+
+			/*restart the sock handle watchout timer */
+            os_timer_setfn((os_timer_t *)&connection->stop_watch, (os_timer_func_t *)webserver_conn_watcher, connection);
+			os_timer_arm((os_timer_t *)&connection->stop_watch, STOP_TIMER, 0);
+		}
+	}
+	return writed;
 }
 
 /**
@@ -262,7 +282,7 @@ LOCAL void finalize_connection(struct connection* connection)
 	connection->processed = 1;
 }
 
-char* query_get_header(const char* name, struct query* query)
+const char* query_get_header(const char* name, struct query* query)
 {
 	if(query == NULL)
 	{
@@ -280,14 +300,23 @@ char* query_get_header(const char* name, struct query* query)
 	return NULL;
 }
 
-char* query_get_param(const char* name, struct query* query)
+const char* query_get_param(const char* name, struct query* query, REQUEST_METHOD m)
 {
 	if(query == NULL)
 	{
 		return NULL;
 	}
 
-	for(struct query_pair** iter = query->params; *iter != NULL; ++iter)
+	if(m == REQUEST_UNKNOWN)
+	{
+		return NULL;
+	}
+
+	struct query_pair** target = m == REQUEST_GET 
+		? query->get_params
+		: query->post_params;
+
+	for(struct query_pair** iter = target; *iter != NULL; ++iter)
 	{
 		struct query_pair* ptr = *iter;
 		if(strcmp(ptr->name, name) == 0)
@@ -307,13 +336,74 @@ REQUEST_METHOD query_get_method(struct query* query)
 	return query->method;
 }
 
-char* query_get_uri(struct query* query)
+const char* query_get_uri(struct query* query)
 {
 	if(query == NULL)
 	{
 		return NULL;
 	}
 	return query->uri;
+}
+
+LOCAL bool query_response_append(struct query* query, const char* data, uint32_t size)
+{
+	if(query != NULL)
+	{
+		if(query->response_body_length + size > SEND_BUF_SIZE)
+		{
+			WS_DEBUG("webserver: overflow response buffer size\n");
+			return false;
+		}
+
+		// append data to buffer
+		// buffer already allocated
+		memcpy(query->response_body + query->response_body_length, data, size);
+		query->response_body_length += size;
+	}
+	return true;
+}
+
+void query_response_status(short status, struct query* query)
+{
+	if(query != NULL)
+	{
+		char buff[PRINT_BUFFER_SIZE];
+		int size = sprintf(buff, 
+				"HTTP/1.1 %d OK\r\n"
+				"Server: light-httpd/%d\r\n"
+				"Connection: close\r\n", status, SERVER_VERSION);
+
+		query_response_append(query, buff, size);
+	}
+}
+
+void query_response_header(const char* name, const char* value, struct query* query)
+{
+	if(query == NULL)
+	{
+		return;
+	}
+
+	// calculate buffer size
+	uint32_t size = strlen(name) + strlen(value) + STATIC_STRLEN("\r\n");
+	if(size > PRINT_BUFFER_SIZE)
+	{
+		WS_DEBUG("webserver: header size: %d greater when PRINT_BUFFER_SIZE: %d\n", size, PRINT_BUFFER_SIZE);
+		return;
+	}
+	char buff[PRINT_BUFFER_SIZE];
+
+	size = sprintf(buff, "%s: %s", name, value);
+	query_response_append(query, buff, size);
+}
+
+void query_response_body(const char* data, uint32_t length, struct query* query)
+{
+	if(query != NULL)
+	{
+		query_response_append(query, "\r\n", STATIC_STRLEN("\r\n"));
+		query_response_append(query, data, length);
+	}
 }
 
 /**
@@ -438,7 +528,7 @@ bool webserver_parse_request_headers(struct connection* connection, char* data)
 	return true;
 }
 
-void webserver_make_param(struct query_pair* pair, char* iter)
+LOCAL void webserver_make_param(struct query_pair* pair, char* iter)
 {
 	char* ptr = strstr(iter, "=");
 	if(ptr == NULL)
@@ -454,12 +544,22 @@ void webserver_make_param(struct query_pair* pair, char* iter)
 	}
 }
 
-bool webserver_parse_params(struct connection* connection, char* data)
+LOCAL bool webserver_parse_params(struct connection* connection, REQUEST_METHOD m, char* data)
 {
 	if(data == NULL)
 	{
 		return true;
 	}
+
+	if(m == REQUEST_UNKNOWN)
+	{
+		WS_DEBUG("webserver: params parse target not setted");
+		return false;
+	}
+
+	struct query_pair** target = m == REQUEST_GET 
+		? connection->query->get_params
+		: connection->query->post_params;
 
 	char* iter = data, *last = data;
 	WS_DEBUG("webserver: params data `%s`\n", data);
@@ -477,11 +577,11 @@ bool webserver_parse_params(struct connection* connection, char* data)
 		return false;
 	}
 
-	connection->query->params = (struct query_pair **) zalloc(sizeof(struct query_pair*) * params_counter);
-	connection->query->params[params_counter] = NULL;
+	target = (struct query_pair **) zalloc(sizeof(struct query_pair*) * params_counter);
+	target[params_counter] = NULL;
 	for(uint32_t i = 0; i < params_counter; ++i)
 	{
-		connection->query->params[i] = (struct query_pair*)zalloc(sizeof(struct query_pair));
+		target[i] = (struct query_pair*)zalloc(sizeof(struct query_pair));
 	}
 
 	iter = last;
@@ -491,7 +591,7 @@ bool webserver_parse_params(struct connection* connection, char* data)
 		if(*iter == '&')
 		{
 			*iter = '\0';
-			webserver_make_param(connection->query->params[params_counter], last);
+			webserver_make_param(target[params_counter], last);
 			last = (iter + 1);
 
 			++params_counter;
@@ -502,10 +602,10 @@ bool webserver_parse_params(struct connection* connection, char* data)
 	// not found & token but data not empty
 	if(params_counter == 0)
 	{
-		webserver_make_param(connection->query->params[params_counter], last);
+		webserver_make_param(target[params_counter], last);
 	}
 
-	for(struct query_pair** iter = connection->query->params; *iter != NULL; ++iter)
+	for(struct query_pair** iter = target; *iter != NULL; ++iter)
 	{
 		struct query_pair* ptr = *iter;
 		WS_DEBUG("webserver: params name: `%s` - `%s`\n", ptr->name, ptr->value);
@@ -548,7 +648,7 @@ LOCAL bool webserver_parse_request(struct connection *connection)
 		return false;
 	}
 
-	char* content_length = query_get_header("Content-Length", connection->query);
+	const char* content_length = query_get_header("Content-Length", connection->query);
 	if(content_length != NULL)
 	{
 		uint32_t header_size = atoi(content_length);
@@ -566,32 +666,33 @@ LOCAL bool webserver_parse_request(struct connection *connection)
 		connection->query->body = iter;
 	}
 
-	char* content_type = query_get_header("Content-Type", connection->query);
+	// parse body 
+	const char* content_type = query_get_header("Content-Type", connection->query);
 	if(content_type != NULL)
 	{
 		if(strncmp(content_type, "application/x-www-form-urlencoded", STATIC_STRLEN("application/x-www-form-urlencoded")) != 0)
 		{
 			WS_DEBUG("webserver: Content-Type: `%s` not supported\n", content_type); 
 		}
-		else if(!webserver_parse_params(connection, connection->query->body))
+		else if(!webserver_parse_params(connection, REQUEST_POST, connection->query->body))
 		{
 			WS_DEBUG("webserver: Can't parse params: %s\n", iter);
 			return false;
 		}
 	}
-	else
-	{
-		iter = strstr(connection->query->uri, "?");
-		if(iter != NULL)
-		{	// remove params from uri
-			*iter = '\0'; ++iter;
-			if(!webserver_parse_params(connection, iter))
-			{
-				WS_DEBUG("webserver: Can't parse params: %s\n", iter);
-				return false;
-			}
+
+	// parse uri args
+	iter = strstr(connection->query->uri, "?");
+	if(iter != NULL)
+	{	// remove params from uri
+		*iter = '\0'; ++iter;
+		if(!webserver_parse_params(connection, REQUEST_GET, iter))
+		{
+			WS_DEBUG("webserver: Can't parse params: %s\n", iter);
+			return false;
 		}
 	}
+
 	WS_DEBUG("webserver: request parsed\n");
 	return true;
 }
@@ -608,8 +709,13 @@ LOCAL void webserver_recvdata_process(struct connection *connection)
 		///@todo implement call user handler
 		else
 		{
-			char* ptr = query_get_header("Test", connection->query);
+			const char* ptr = query_get_header("Test", connection->query);
 			WS_DEBUG("webserver: header test: %s\n", (ptr != NULL ? ptr : "HZ"));
+			query_response_status(200, connection->query);
+
+			char buff[PRINT_BUFFER_SIZE] = { 0 };
+			uint32_t size = sprintf(buff, "<html><head></head><body><h1>Header: %s</h1></body></html>", ptr);
+			query_response_body(buff, size, connection->query);
 		}
 		finalize_connection(connection);
 	}
@@ -775,6 +881,7 @@ LOCAL void webserver_recv_thread(void *pvParameters)
 				else if(pconnection_pool->data[index]->processed)
 				{
 					WS_DEBUG("webserver: close processed connection\n");
+					connection_send_data(index, pconnection_pool);
 					close_connection(index, pconnection_pool);
 				}
             }
@@ -842,7 +949,7 @@ int8_t webserver_recv_task_stop(void)
     xStatus = xQueueSend(RCVQueueStop,&ValueToSend,0);
     if (xStatus != pdPASS)
 	{
-        WS_DEBUG("WEB SEVER Could not send to the rcvqueue!\n");
+        WS_DEBUG("webserver: Could not send to the rcvqueue!\n");
         return -1;
     } 
 	else 
@@ -956,17 +1063,17 @@ LOCAL void webserver_task(void *pvParameters)
 				os_timer_setfn(&pconnection_pool->data[index]->stop_watch, (os_timer_func_t *)webserver_conn_watcher, pconnection_pool->data[index]);
 				os_timer_arm(&pconnection_pool->data[index]->stop_watch, STOP_TIMER, 0);
 
-				WS_DEBUG("WEB SERVER acpt index:%d sockfd %d!\n",index, remotefd);
+				WS_DEBUG("webserver: acpt index:%d sockfd %d!\n",index, remotefd);
 			}
 			else
 			{
 				close(remotefd);
-				WS_DEBUG("WEB SERVER TOO MUCH CONNECTION, CHECK ITer!\n");
+				WS_DEBUG("webserver: TOO MUCH CONNECTION, CHECK ITer!\n");
 			}
 		}
 		else
 		{
-			WS_DEBUG("WEB SERVER remote error: %d, WARNING!\n", remotefd);
+			WS_DEBUG("webserver: remote error: %d, WARNING!\n", remotefd);
 		}
 
 		///@todo remove debug info when failed accept connection
@@ -1011,7 +1118,7 @@ int8_t webserver_stop(void)
     xStatus = xQueueSend(QueueStop, &ValueToSend, 0);
     if (xStatus != pdPASS)
 	{
-        WS_DEBUG("WEB SEVER Could not send to the queue!\n");
+        WS_DEBUG("webserver: Could not send to the queue!\n");
         return -1;
     } 
 	else

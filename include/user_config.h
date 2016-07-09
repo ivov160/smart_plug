@@ -5,6 +5,15 @@
 #define GDBSTUB_FREERTOS 1
 //#define GDBSTUB_USE_OWN_STACK 1
 
+// 512 bytes for headers and body
+#define RECV_BUF_SIZE 512
+
+// 1k bytes for send buffer (json)
+#define SEND_BUF_SIZE 1024
+
+// for develop 1 connection
+#define CONNECTION_POOL_SIZE 1
+
 #ifdef __GNUC__
 #define NORETURN __attribute__((noreturn))
 #define NOINLINE __attribute__((noinline))
