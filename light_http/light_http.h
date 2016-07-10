@@ -3,8 +3,9 @@
 
 #include "esp_common.h"
 #include "esp_libc.h"
+#include "user_config.h"
 
-#include "light_http_config.h"
+//#include "light_http_config.h"
 
 /**
  * @brief Время на обработку запроса millisecond
@@ -135,9 +136,10 @@ void query_response_header(const char* name, const char* value, struct query* qu
 void query_response_body(const char* data, uint32_t length, struct query* query);
 
 /**
- * @brief Метод для запуска http сервера
+ * @brief Метод для запуска сервера
+ * @param handlers Список обработчиков
  */
-void webserver_start(void);
+void webserver_start(struct http_handler_rule *handlers);
 
 /**
  * @brief Метод для остановки http сервера

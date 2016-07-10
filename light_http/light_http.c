@@ -8,8 +8,6 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#include "json/cJSON.h"
-
 #define DEBUG
 #ifdef DEBUG
 	#define WS_DEBUG os_printf
@@ -30,6 +28,8 @@
  */
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
+static struct http_handler_rule *handlers = NULL;
+
 /**
  * @brief Структура для заголовка
  *
@@ -39,8 +39,8 @@
  */
 struct query_pair
 {
-	char* name;
-	char* value;
+	char* name;			///< ключ
+	char* value;		///< значение
 };
 
 /**
@@ -48,20 +48,20 @@ struct query_pair
  */
 struct query
 {
-	REQUEST_METHOD method;
+	REQUEST_METHOD method;						///< Тип запроса
 
-	char* uri;
-	uint32_t uri_length;
+	char* uri;									///< uri
+	uint32_t uri_length;						///< длинная uri
 	
-	struct query_pair** request_headers;
-	struct query_pair** get_params;
-	struct query_pair** post_params;
+	struct query_pair** request_headers;		///< заголовки запроса
+	struct query_pair** get_params;				///< параметры из uri
+	struct query_pair** post_params;			///< параметры из post
 
-	char* body;
-	uint32_t body_length;
+	char* body;									///< тело запроса
+	uint32_t body_length;						///< длинна тела запроса
 
-	char response_body[SEND_BUF_SIZE];
-	uint32_t response_body_length;
+	char response_body[SEND_BUF_SIZE];			///< буфер ответа сервера
+	uint32_t response_body_length;				///< текущий размер буфера ответа
 };
 
 /**
@@ -90,8 +90,8 @@ struct connection
  */
 struct connections_pool 
 {
-	int32_t size;
-	struct connection** data;
+	int32_t size;					///< размер пула
+	struct connection** data;		///< пулл коннектов
 };
 
 LOCAL struct connections_pool connections;
@@ -101,6 +101,34 @@ LOCAL xQueueHandle QueueStop = NULL;
 LOCAL xQueueHandle RCVQueueStop = NULL;
 
 LOCAL void webserver_conn_watcher(struct connection* pconnection);
+
+/**
+ * @brief Функция для поиска обработчика запроса
+ * @return указатель на обработчик, NULL если ненашлось
+ */
+LOCAL const struct http_handler_rule* get_handler(struct query *query)
+{
+	struct http_handler_rule* handler = NULL;
+	if(handlers != NULL)
+	{
+		handler = handlers;
+		const char* uri = query_get_uri(query);
+		while(handler != NULL && handler->uri != NULL && handler->handler != NULL)
+		{
+			if(strcmp(uri, handler->uri) == 0)
+			{
+				break;
+			}
+			++handler;
+		}
+		// checking end of handlers list
+		if(handler->uri == NULL || handler->handler == NULL)
+		{
+			handler = NULL;
+		}
+	}
+	return handler;
+}
 
 /**
  * @brief Метод для создания объекта запроса
@@ -207,6 +235,9 @@ LOCAL void accept_connection(uint8_t index, struct connections_pool* pool, int32
 	}
 }
 
+/**
+ * @brief Метод для отправки данных
+ */
 LOCAL uint32_t connection_send_data(uint8_t index, struct connections_pool* pool)
 {
 	uint32_t writed = 0;
@@ -370,7 +401,7 @@ void query_response_status(short status, struct query* query)
 		char buff[PRINT_BUFFER_SIZE];
 		int size = sprintf(buff, 
 				"HTTP/1.1 %d OK\r\n"
-				"Server: light-httpd/%d\r\n"
+				"Server: light-httpd/%s\r\n"
 				"Connection: close\r\n", status, SERVER_VERSION);
 
 		query_response_append(query, buff, size);
@@ -709,13 +740,15 @@ LOCAL void webserver_recvdata_process(struct connection *connection)
 		///@todo implement call user handler
 		else
 		{
-			const char* ptr = query_get_header("Test", connection->query);
-			WS_DEBUG("webserver: header test: %s\n", (ptr != NULL ? ptr : "HZ"));
-			query_response_status(200, connection->query);
-
-			char buff[PRINT_BUFFER_SIZE] = { 0 };
-			uint32_t size = sprintf(buff, "<html><head></head><body><h1>Header: %s</h1></body></html>", ptr);
-			query_response_body(buff, size, connection->query);
+			const struct http_handler_rule *handler = get_handler(connection->query);		
+			if(handler != NULL && handler->handler != NULL)
+			{	
+				handler->handler(connection->query);
+			}
+			else
+			{	// не найден обработчик
+				query_response_status(404, connection->query);
+			}
 		}
 		finalize_connection(connection);
 	}
@@ -962,6 +995,9 @@ int8_t webserver_recv_task_stop(void)
 
 LOCAL void webserver_task(void *pvParameters)
 {
+	WS_DEBUG("webserver: started, STOP_TIMER: %d, RECV_BUF_SIZE: %d, SEND_BUF_SIZE: %d, PRINT_BUFFER_SIZE: %d, CONNECTION_POOL_SIZE: %d\n",
+			STOP_TIMER, RECV_BUF_SIZE, SEND_BUF_SIZE, PRINT_BUFFER_SIZE, CONNECTION_POOL_SIZE);
+
     int32_t listenfd;
     int32_t len;
     int32_t ret;
@@ -1090,14 +1126,20 @@ LOCAL void webserver_task(void *pvParameters)
     close(listenfd);
     vQueueDelete(QueueStop);
     QueueStop = NULL;
+	handlers = NULL;
     vTaskDelete(NULL);
 }
 
-void webserver_start(void)
+void webserver_start(struct http_handler_rule *user_handlers)
 {
     if(QueueStop == NULL)
 	{
         QueueStop = xQueueCreate(1, 1);
+	}
+
+	if(handlers == NULL)
+	{
+		handlers = user_handlers;
 	}
 
     if(QueueStop != NULL)
