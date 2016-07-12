@@ -60,7 +60,7 @@ struct query
 	char* body;									///< тело запроса
 	uint32_t body_length;						///< длинна тела запроса
 
-	char response_body[SEND_BUF_SIZE];			///< буфер ответа сервера
+	char* response_body;						///< буфер ответа сервера
 	uint32_t response_body_length;				///< текущий размер буфера ответа
 };
 
@@ -74,33 +74,20 @@ struct connection
 	int32_t processed;				///< флаг отвечающий за процессинг
 	os_timer_t stop_watch;			///< таймер для таймаута
 
-#ifdef SERVER_SSL_ENABLE
-    SSL *ssl;						///< ssl ctx
-#endif
-
 	char* receive_buffer;			///< буффер с данными прочитанными из сокета
 	int32_t receive_buffer_size;	///< размер буфера с данными
 
 	struct query* query;			///< объект запроса, создается после первичного парсинга запроса иначе NULL
 };
 
-/**
- * @brief Структура пула коннектов
- *
- */
-struct connections_pool 
-{
-	int32_t size;					///< размер пула
-	struct connection** data;		///< пулл коннектов
-};
+///@todo replace for event or somthing else using queu mb very fat
+/// stop condition
+LOCAL xQueueHandle webserver_task_stop = NULL;
+LOCAL xQueueHandle webserver_client_task_stop = NULL;
+/// queu for client sockets
+LOCAL xQueueHandle socket_queue = NULL;
 
-LOCAL struct connections_pool connections;
-LOCAL struct connection* connection_list[CONNECTION_POOL_SIZE];
-
-LOCAL xQueueHandle QueueStop = NULL;
-LOCAL xQueueHandle RCVQueueStop = NULL;
-
-LOCAL void webserver_conn_watcher(struct connection* pconnection);
+LOCAL void webserver_conn_watcher(struct connection* connection);
 
 /**
  * @brief Функция для поиска обработчика запроса
@@ -128,189 +115,6 @@ LOCAL const struct http_handler_rule* get_handler(struct query *query)
 		}
 	}
 	return handler;
-}
-
-/**
- * @brief Метод для создания объекта запроса
- *
- * Создает объект запроса и иницилизирует поля 
- * значениями по умолчанию
- *
- */
-LOCAL void init_query(struct connection *connection)
-{
-	if(connection->query == NULL)
-	{
-        connection->query = (struct query *)zalloc(sizeof(struct query));
-
-		connection->query->uri = NULL;
-		connection->query->uri_length = 0;
-
-		connection->query->body = NULL;
-		connection->query->body_length = 0;
-
-		connection->query->request_headers = NULL;
-		connection->query->get_params = NULL;
-		connection->query->post_params = NULL;
-
-		connection->query->response_body_length = 0;
-	}
-}
-
-/**
- * @brief Метод для разрушения query
- */
-LOCAL void cleanup_query(struct query *query)
-{
-	if(query != NULL)
-	{
-		if(query->request_headers != NULL)
-		{
-			for(struct query_pair** iter = query->request_headers; *iter != NULL; ++iter)
-			{
-				free((struct query_pair*)(*iter));
-			}
-		}
-
-		if(query->get_params != NULL)
-		{
-			for(struct query_pair** iter = query->get_params; *iter != NULL; ++iter)
-			{
-				free((struct query_pair*)(*iter));
-			}
-		}
-
-		if(query->post_params != NULL)
-		{
-			for(struct query_pair** iter = query->post_params; *iter != NULL; ++iter)
-			{
-				free((struct query_pair*)(*iter));
-			}
-		}
-
-		free(query->get_params);
-		free(query->post_params);
-		free(query->request_headers);
-		free(query);
-	}
-}
-
-/**
- * @brief Инициализация пулла коннектов
- */
-LOCAL void connection_pool_init(void)
-{
-    for(uint8_t index = 0; index < CONNECTION_POOL_SIZE; index++)
-	{
-        connection_list[index] = (struct connection *)zalloc(sizeof(struct connection));
-        connection_list[index]->socketfd = -1;
-        connection_list[index]->timeout =  0;
-        connection_list[index]->processed =  0;
-		connection_list[index]->query = NULL;
-		connection_list[index]->receive_buffer = NULL;
-    }
-
-	// current usage connections
-    connections.size = 0; 
-    connections.data = connection_list;
-
-    WS_DEBUG("webserver: connection pool init ok!\n");
-}
-
-/**
- * @brief Связывание сокета с неиспользуемым коннектом в пуле
- */
-LOCAL void accept_connection(uint8_t index, struct connections_pool* pool, int32_t remotefd)
-{
-	if(pool != NULL && index < CONNECTION_POOL_SIZE)
-	{
-		pool->size++;
-		pool->data[index]->socketfd = remotefd;
-		pool->data[index]->receive_buffer = NULL;
-		pool->data[index]->query = NULL;
-	}
-	else
-	{
-		WS_DEBUG("webserver: accept_connection invalid index: %i\n", index);
-	}
-}
-
-/**
- * @brief Метод для отправки данных
- */
-LOCAL uint32_t connection_send_data(uint8_t index, struct connections_pool* pool)
-{
-	uint32_t writed = 0;
-	if(pool != NULL && index < CONNECTION_POOL_SIZE)
-	{
-		struct connection* connection = pool->data[index];
-
-		if(connection->query != NULL)
-		{
-			os_timer_disarm((os_timer_t *)&connection->stop_watch);
-
-			if (connection->query->response_body_length != 0)
-			{
-				writed = write(connection->socketfd, (uint8_t*)connection->query->response_body, connection->query->response_body_length);
-				connection->query->response_body_length = 0;
-			}
-
-			/*restart the sock handle watchout timer */
-            os_timer_setfn((os_timer_t *)&connection->stop_watch, (os_timer_func_t *)webserver_conn_watcher, connection);
-			os_timer_arm((os_timer_t *)&connection->stop_watch, STOP_TIMER, 0);
-		}
-	}
-	return writed;
-}
-
-/**
- * @brief Закрытие соеденения с клиентом
- * 
- * Метод закрывает сокет и вычищает данные?
- */
-LOCAL void close_connection(uint8_t index, struct connections_pool* pool)
-{
-	if(pool != NULL && index < pool->size)
-	{
-#ifdef SERVER_SSL_ENABLE
-		ssl_free(pool->data[index]->ssl);
-		pool->data[index]->ssl = NULL;
-#endif
-		close(pool->data[index]->socketfd);
-
-		if(pool->data[index]->receive_buffer != NULL)
-		{
-			free(pool->data[index]->receive_buffer);
-			pool->data[index]->receive_buffer = NULL;
-		}
-
-		if(pool->data[index]->query != NULL)
-		{
-			cleanup_query(pool->data[index]->query);
-		}
-		pool->data[index]->query = NULL;
-
-		pool->data[index]->processed = 0;
-		pool->data[index]->timeout = 0;
-		pool->data[index]->socketfd = -1;
-
-		pool->size--;
-	}
-	else
-	{
-		WS_DEBUG("webserver: close_connection invalid index: %i\n", index);
-	}
-}
-
-/**
- * @brief Метод для завершения обработки запроса
- *
- * Метод маркирует connection для последующего закрытия и 'отправки данных?'
- *
- */
-LOCAL void finalize_connection(struct connection* connection)
-{
-	connection->processed = 1;
 }
 
 const char* query_get_header(const char* name, struct query* query)
@@ -380,7 +184,7 @@ LOCAL bool query_response_append(struct query* query, const char* data, uint32_t
 {
 	if(query != NULL)
 	{
-		if(query->response_body_length + size > SEND_BUF_SIZE)
+		if(query->response_body_length + size >= SEND_BUF_SIZE)
 		{
 			WS_DEBUG("webserver: overflow response buffer size\n");
 			return false;
@@ -394,17 +198,21 @@ LOCAL bool query_response_append(struct query* query, const char* data, uint32_t
 	return true;
 }
 
-void query_response_status(short status, struct query* query)
+void query_response_status(int32_t status, struct query* query)
 {
 	if(query != NULL)
 	{
-		char buff[PRINT_BUFFER_SIZE];
+		char buff[PRINT_BUFFER_SIZE] = { 0 };
 		int size = sprintf(buff, 
 				"HTTP/1.1 %d OK\r\n"
-				"Server: light-httpd/%s\r\n"
-				"Connection: close\r\n", status, SERVER_VERSION);
+				"Server: light-httpd/0.1\r\n"
+				"Connection: close\r\n", status);
 
 		query_response_append(query, buff, size);
+	}
+	else
+	{
+		WS_DEBUG("webserver: query_response_status invalid query pointer\n");
 	}
 }
 
@@ -422,7 +230,7 @@ void query_response_header(const char* name, const char* value, struct query* qu
 		WS_DEBUG("webserver: header size: %d greater when PRINT_BUFFER_SIZE: %d\n", size, PRINT_BUFFER_SIZE);
 		return;
 	}
-	char buff[PRINT_BUFFER_SIZE];
+	char buff[PRINT_BUFFER_SIZE] = { 0 };
 
 	size = sprintf(buff, "%s: %s", name, value);
 	query_response_append(query, buff, size);
@@ -438,14 +246,212 @@ void query_response_body(const char* data, uint32_t length, struct query* query)
 }
 
 /**
+ * @brief Метод для создания объекта запроса
+ *
+ * Создает объект запроса и иницилизирует поля 
+ * значениями по умолчанию
+ *
+ */
+LOCAL struct query* init_query()
+{
+	struct query* query = (struct query *)zalloc(sizeof(struct query));
+
+	query->uri = NULL;
+	query->uri_length = 0;
+
+	query->body = NULL;
+	query->body_length = 0;
+
+	query->request_headers = NULL;
+	query->get_params = NULL;
+	query->post_params = NULL;
+
+	query->response_body = (char*)zalloc(SEND_BUF_SIZE);
+	query->response_body_length = 0;
+
+	return query;
+}
+
+/**
+ * @brief Метод для разрушения query
+ */
+LOCAL void cleanup_query(struct query *query)
+{
+	if(query != NULL)
+	{
+		if(query->request_headers != NULL)
+		{
+			for(struct query_pair** iter = query->request_headers; *iter != NULL; ++iter)
+			{
+				free((struct query_pair*)(*iter));
+			}
+			free(query->request_headers);
+		}
+
+		if(query->get_params != NULL)
+		{
+			for(struct query_pair** iter = query->get_params; *iter != NULL; ++iter)
+			{
+				free((struct query_pair*)(*iter));
+			}
+			free(query->get_params);
+		}
+
+		if(query->post_params != NULL)
+		{
+			for(struct query_pair** iter = query->post_params; *iter != NULL; ++iter)
+			{
+				free((struct query_pair*)(*iter));
+			}
+			free(query->post_params);
+		}
+
+		if(query->response_body != NULL)
+		{
+			free(query->response_body);
+		}
+		free(query);
+	}
+}
+
+/**
+ * @brief Метод для завершения обработки запроса
+ *
+ * Метод маркирует connection для последующего завершения
+ *
+ */
+LOCAL void finalize_connection(struct connection* connection)
+{
+	connection->processed = 1;
+}
+
+/**
+ * @brief Инициирование нового подключения
+ */
+LOCAL struct connection* init_connection(int32_t socketfd)
+{
+	struct connection *connection = (struct connection*)zalloc(sizeof(struct connection));
+	connection->socketfd = socketfd;
+	connection->timeout = 0;
+	connection->processed = 0;
+	connection->receive_buffer = (char*)zalloc(RECV_BUF_SIZE);
+	connection->receive_buffer_size = RECV_BUF_SIZE;
+	connection->query = init_query();
+	return connection;
+}
+
+/**
+ * @brief Метод для разрушения подключения
+ */
+LOCAL void cleanup_connection(struct connection *connection)
+{
+	if(connection != NULL)
+	{
+		if(connection->receive_buffer != NULL)
+		{
+			free(connection->receive_buffer);
+			connection->receive_buffer = NULL;
+		}
+
+		if(connection->query != NULL)
+		{
+			cleanup_query(connection->query);
+		}
+		connection->query = NULL;
+
+		connection->processed = 0;
+		connection->timeout = 0;
+		connection->socketfd = -1;
+	}
+	else
+	{
+		WS_DEBUG("webserver: cleanup_connection invalid pointer\n");
+	}
+}
+
+/**
+ * @brief Закрытие соеденения с клиентом
+ * Метод закрывает сокет
+ */
+LOCAL void close_connection(struct connection *connection)
+{
+	if(connection != NULL)
+	{
+		close(connection->socketfd);
+	}
+	else
+	{
+		WS_DEBUG("webserver: close_connection invalid pointer\n");
+	}
+}
+
+/**
+ * @brief Метод для остановки таймера ожидания 
+ */
+LOCAL void stop_timer_connection(struct connection *connection)
+{
+	if(connection != NULL)
+	{
+		os_timer_disarm(&connection->stop_watch);
+	}
+	else
+	{
+		WS_DEBUG("webserver: start_timer_connection invalid pointer\n");
+	}
+}
+
+/**
+ * @brief Метод запускает таймер для ожидания
+ *
+ * Используется для реалицазии таймаута при записи или чтении
+ */
+LOCAL void start_timer_connection(struct connection *connection)
+{
+	if(connection != NULL)
+	{
+		stop_timer_connection(connection);
+		os_timer_setfn(&connection->stop_watch, (os_timer_func_t *)webserver_conn_watcher, connection);
+		os_timer_arm(&connection->stop_watch, STOP_TIMER, 0);
+	}
+	else
+	{
+		WS_DEBUG("webserver: start_timer_connection invalid pointer\n");
+	}
+}
+
+/**
+ * @brief Метод для отправки данных
+ */
+LOCAL uint32_t connection_send_data(struct connection* connection)
+{
+	uint32_t writed = 0;
+	if(connection != NULL)
+	{
+		if(connection->query != NULL)
+		{
+			// запуск таймера, если не успеем отправить ответ, то сокет закроеться
+			start_timer_connection(connection);
+			if (connection->query->response_body_length != 0)
+			{
+				writed = write(connection->socketfd, (uint8_t*)connection->query->response_body, connection->query->response_body_length);
+				connection->query->response_body_length = 0;
+			}
+			stop_timer_connection(connection);
+		}
+	}
+	return writed;
+}
+
+/**
  * @brief Обработчик таймаута обработки подключения
  */
-LOCAL void webserver_conn_watcher(struct connection* pconnection)
+LOCAL void webserver_conn_watcher(struct connection *connection)
 {
-    os_timer_disarm(&pconnection->stop_watch);
-    pconnection->timeout = 1;
-    
-    WS_DEBUG("webserver: watcher sock_fd %d timeout!\n", pconnection->socketfd);
+	os_timer_disarm(&connection->stop_watch);
+	connection->timeout = 1;
+	close_connection(connection);
+
+	WS_DEBUG("webserver: watcher sock_fd %d timeout!\n", connection->socketfd);
 }
 
 /**
@@ -453,7 +459,7 @@ LOCAL void webserver_conn_watcher(struct connection* pconnection)
  * @todo Описать как парсит
  * @return true удалось распарсить заголовки иначе false
  */
-bool webserver_parse_request_headers(struct connection* connection, char* data)
+LOCAL bool webserver_parse_request_headers(struct connection* connection, char* data)
 {
 	char *header_name = NULL, *header_value = NULL;
 	char *iter = data;
@@ -502,7 +508,7 @@ bool webserver_parse_request_headers(struct connection* connection, char* data)
 	// calculate headers count
 	// count > size by 1 because calculated method row
 	// but count usage for headers array ending with NULL
-	uint8_t headers_count = 0;
+	int32_t headers_count = 0;
 	while((iter = strstr(iter, "\r\n")) != NULL)
 	{
 		iter += STATIC_STRLEN("\r\n");
@@ -510,9 +516,9 @@ bool webserver_parse_request_headers(struct connection* connection, char* data)
 	}
 	WS_DEBUG("webserver: headers counted: %d\n", headers_count);
 
-	connection->query->request_headers = (struct query_pair **) zalloc(sizeof(struct query_pair*) * headers_count);
+	connection->query->request_headers = (struct query_pair **) zalloc(sizeof(struct query_pair*) * (headers_count + 1));
 	connection->query->request_headers[headers_count] = NULL;
-	for(uint8_t i = 0; i < headers_count; ++i)
+	for(int32_t i = 0; i < headers_count; ++i)
 	{
 		connection->query->request_headers[i] = (struct query_pair*)zalloc(sizeof(struct query_pair));
 	}
@@ -608,7 +614,7 @@ LOCAL bool webserver_parse_params(struct connection* connection, REQUEST_METHOD 
 		return false;
 	}
 
-	target = (struct query_pair **) zalloc(sizeof(struct query_pair*) * params_counter);
+	target = (struct query_pair **) zalloc(sizeof(struct query_pair*) * (params_counter + 1));
 	target[params_counter] = NULL;
 	for(uint32_t i = 0; i < params_counter; ++i)
 	{
@@ -658,12 +664,11 @@ LOCAL bool webserver_parse_request(struct connection *connection)
 		return false;
 	}
 
-	if(connection->query != NULL)
+	if(connection->query == NULL)
 	{
-		WS_DEBUG("webserver: shit happens, query is not NULL\n");
+		WS_DEBUG("webserver: shit happens, query is NULL\n");
 		return false;
 	}
-	init_query(connection);
 
 	char* iter = strstr(connection->receive_buffer, "\r\n\r\n");
 	if(iter != NULL)
@@ -728,19 +733,22 @@ LOCAL bool webserver_parse_request(struct connection *connection)
 	return true;
 }
 
-LOCAL void webserver_recvdata_process(struct connection *connection)
+/** 
+ * @brief Серверный обработчик подключения
+ */
+LOCAL void webserver_connection_handle(struct connection *connection)
 {
 	if(connection != NULL && connection->receive_buffer != NULL)
 	{
 		WS_DEBUG("webserver: data: %s\n", connection->receive_buffer);
 		if(!webserver_parse_request(connection))
 		{
-			WS_DEBUG("webserver: can't parse request, socket: %d", connection->socketfd);
+			WS_DEBUG("webserver: can't parse request, socket: %d \n", connection->socketfd);
+			query_response_status(500, connection->query);
 		}
-		///@todo implement call user handler
 		else
 		{
-			const struct http_handler_rule *handler = get_handler(connection->query);		
+			const struct http_handler_rule *handler = get_handler(connection->query);
 			if(handler != NULL && handler->handler != NULL)
 			{	
 				handler->handler(connection->query);
@@ -754,420 +762,258 @@ LOCAL void webserver_recvdata_process(struct connection *connection)
 	}
 	else
 	{
-		WS_DEBUG("webserver: invalid connection pointer or buffer");
+		WS_DEBUG("webserver: invalid connection pointer or buffer\n");
 	}
 }
 
-LOCAL void webserver_recv_thread(void *pvParameters)
+/**
+ * @brief Функция для проверки стоп флага
+ */
+LOCAL bool check_stop_condition(xQueueHandle *queue)
 {
-    int stack_counter = 0;
-    struct connections_pool* pconnection_pool = (struct connections_pool*) pvParameters;
-
-#ifdef SERVER_SSL_ENABLE
-    uint8_t  quiet = FALSE;
-    uint8_t *read_buf = NULL;
-    SSL_CTX *ssl_ctx = NULL;
-    
-    if ((ssl_ctx = ssl_ctx_new(SSL_DISPLAY_CERTS, SSL_DEFAULT_SVR_SESS)) == NULL) 
+	bool result = true;
+	if(queue != NULL)
 	{
-        WS_DEBUG("Error: Server context is invalid\n");
-    }
-#else 
-    char *precvbuf = (char*)malloc(RECV_BUF_SIZE);
-    if(NULL == precvbuf)
-	{
-        WS_DEBUG("webserver: recv_thread, memory exhausted, check it\n");
-    }
-#endif
-
-    uint32_t maxfdp = 0;
-    while(1)
-	{
-		bool ValueFromReceive = FALSE;
-		portBASE_TYPE xStatus = xQueueReceive(RCVQueueStop, &ValueFromReceive, 0);
-        if ( pdPASS == xStatus && TRUE == ValueFromReceive)
+		portBASE_TYPE xStatus = xQueueReceive(*queue, &result, 0);
+		if (pdPASS == xStatus && result == TRUE)
 		{
-            WS_DEBUG("webserver: webserver_recv_thread rcv exit signal!\n");
-            break;
-        }
-
-        while(pconnection_pool->size == 0)
+			result = true;
+		}
+		else
 		{
+			result = false;
+		}
+	}
+	else
+	{
+		WS_DEBUG("webserver: check_stop_condition invalid pointer\n");
+	}
+	return result;
+}
+
+LOCAL int32_t webserver_start_listen()
+{
+	///@todo add checking stop condition for task
+	int32_t listen_socket = 0;
+    do
+	{	// Create socket for incoming connections
+        listen_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_socket == -1) 
+		{
+            WS_DEBUG("webserver: failed to create sock!\n");
             vTaskDelay(1000 / portTICK_RATE_MS);
-            /*if no client coming in, wait in big loop*/
-            continue;
         }
+    } 
+	while(listen_socket == -1);
+    
+	int32_t result;
+    do
+	{	// Bind to the local address
+		struct sockaddr_in server_addr;
 
-        /*clear fdset, and set the selct function wait time*/
-		fd_set readset;
-        FD_ZERO(&readset);
+		/* Construct local address structure */
+		memset(&server_addr, 0, sizeof(server_addr)); /* Zero out structure */
+		server_addr.sin_family = AF_INET;            /* Internet address family */
+		server_addr.sin_addr.s_addr = INADDR_ANY;   /* Any incoming interface */
+		server_addr.sin_len = sizeof(server_addr);  
+		server_addr.sin_port = htons(WEB_SERVER_PORT); /* Local port */
 
-        for(uint8_t index = 0; index < CONNECTION_POOL_SIZE; index++)
-		{ //find all valid handle 
-            if(pconnection_pool->data[index]->socketfd >= 0)
-			{
-                FD_SET(pconnection_pool->data[index]->socketfd, &readset);
-                maxfdp = max(pconnection_pool->data[index]->socketfd, maxfdp);
-				WS_DEBUG("webserver: selected index: %d\n", index);
-            }
-        }
-
-        //polling all exist client handle
-		struct timeval timeout;
-        timeout.tv_sec = 1;
-        timeout.tv_usec = 0;
-        
-        int ret = select(maxfdp + 1, &readset, NULL, NULL, &timeout);
-        if(ret > 0)
+        result = bind(listen_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
+        if (result != 0) 
 		{
-#ifdef SERVER_SSL_ENABLE
-            for(uint8_t index = 0; index < CONNECTION_POOL_SIZE; index++)
-			{	/* IF this handle there is data/event aviliable, recive it*/
-                if (FD_ISSET(pconnection_pool->data[index]->socketfd, &readset))
-                {	/*stop the sock handle watchout timer */
-                    os_timer_disarm((os_timer_t *)&pconnection_pool->data[index]->stop_watch);
-                
-                    if(NULL == pconnection_pool->data[index]->ssl)
-					{
-                        pconnection_pool->data[index]->ssl = ssl_server_new(ssl_ctx, pconnection_pool->data[index]->socketfd);
-                    }
-                    
-                    if ((ret = ssl_read(pconnection_pool->data[index]->ssl, &read_buf)) == SSL_OK) 
-					{	/* in the middle of doing a handshake */
-                        if (ssl_handshake_status(pconnection_pool->single_conn[index]->ssl) == SSL_OK) 
-						{
-                            if (!quiet) 
-							{
-                                display_session_id(pconnection_pool->data[index]->ssl);
-                                display_cipher(pconnection_pool->data[index]->ssl);
-                                WS_DEBUG("webserver: connection handshake ok!\n");
-                                quiet = true;
-                            }
-                        }
-                    }
-                    
-                    if (ret > SSL_OK) 
-					{  
-                        WS_DEBUG("webserver: webserver_recv_thread recv and process sockfd %d!\n", pconnection_pool->data[index]->socketfd);
-						pconnection_pool->data[index]->receive_buffer = read_buf;
-						pconnection_pool->data[index]->receive_buffer_size = ret;
-						webserver_recvdata_process(pconnection_pool->data[index]);
+            WS_DEBUG("webserver: failed to bind sock!\n");
+            vTaskDelay(1000 / portTICK_RATE_MS);
+        }
+    }
+	while(result != 0);
 
-                        /*restart the sock handle watchout timer */
-                        os_timer_setfn((os_timer_t *)&pconnection_pool->data[index]->stop_watch, (os_timer_func_t *)webserver_conn_watcher, pconnection_pool->data[index]);
-                        os_timer_arm((os_timer_t *)&pconnection_pool->data[index]->stop_watch, STOP_TIMER, 0);
-                        
-                    } 
-					else if (ret == SSL_CLOSE_NOTIFY) 
-					{
-                        WS_DEBUG("webserver: shutting down SSL\n");
-                        
-                    } 
-					else if (ret < SSL_OK)
-					{
-                        WS_DEBUG("webserver: webserver_recv_thread CONNECTION CLOSED index %d !\n", index);
-						close_connection(index, pconnection_pool);
-                    }
-                }
-                else if(pconnection_pool->data[index]->timeout == 1)
-				{ /* IF this handle there is no data/event aviliable, check the timeout flag*/
-                    WS_DEBUG("webserver: webserver_recv_thread index %d timeout,close!\n",index);
-					close_connection(index, pconnection_pool);
-                }
-            }
-#else
-            for(uint8_t index = 0; index < CONNECTION_POOL_SIZE; index++)
-			{	/* IF this handle there is data/event aviliable, recive it*/
-                if (FD_ISSET(pconnection_pool->data[index]->socketfd, &readset))
-                {	/*stop the sock handle watchout timer */
-                    os_timer_disarm((os_timer_t *)&pconnection_pool->data[index]->stop_watch);
+    do
+	{	// Listen to the local connection */
+        result = listen(listen_socket, CONNECTION_POOL_SIZE);
+        if (result != 0) 
+		{
+            WS_DEBUG("webserver: failed to set listen queue!\n");
+            vTaskDelay(1000 / portTICK_RATE_MS);
+        }
+    }
+	while(result != 0);
+	return listen_socket;
+}
 
-					// bind buffer for selected connection
-                    memset(precvbuf, 0, RECV_BUF_SIZE);
+LOCAL void webserver_client_task(void *pvParameters)
+{
+	while(true)
+	{
+		// checking stop flag
+		if(check_stop_condition(&webserver_client_task_stop))
+		{
+			WS_DEBUG("webserver: webserver_client_task rcv exit signal!\n");
+			break;
+		}
 
-                    ret = recv(pconnection_pool->data[index]->socketfd, precvbuf, RECV_BUF_SIZE, 0);
-                    if(ret > 0)
-					{
-                        WS_DEBUG("webserver: webserver recv sockfd %d\n", pconnection_pool->data[index]->socketfd);
-					
-						pconnection_pool->data[index]->receive_buffer = precvbuf;
-						pconnection_pool->data[index]->receive_buffer_size = ret;
-						webserver_recvdata_process(pconnection_pool->data[index]);
+		int32_t client_socket = 0;
+		if(!xQueueReceive(socket_queue, &client_socket, STOP_TIMER / portTICK_RATE_MS))
+		{	///@todo удалить отладочный print после теста (штатная ситуация при пустой очереди)
+			WS_DEBUG("webserver: empty socket_queue\n");
+			taskYIELD();
+		}
+		else
+		{
+			struct connection *connection = init_connection(client_socket);
+			if(connection == NULL)
+			{
+				WS_DEBUG("webserver: webserver_client_task, memory exhausted, check it\n");
+				close(client_socket);
 
-                        /*restart the sock handle watchout timer */
-                        os_timer_setfn((os_timer_t *)&pconnection_pool->data[index]->stop_watch, (os_timer_func_t *)webserver_conn_watcher, pconnection_pool->data[index]);
-                        os_timer_arm((os_timer_t *)&pconnection_pool->data[index]->stop_watch, STOP_TIMER, 0);
-                    }
-					else
-					{	//recv error,connection close
-                        WS_DEBUG("webserver: close sockfd %d !\n", pconnection_pool->data[index]->socketfd);
-						close_connection(index, pconnection_pool);
-                    }
-                }
+				// next iteration
+				continue;
+			}
 
-				WS_DEBUG("webserver: index: %d, timeout: %d, processed: %d\n", index, pconnection_pool->data[index]->timeout, pconnection_pool->data[index]->processed);
-				if(pconnection_pool->data[index]->timeout)
-				{
-					WS_DEBUG("webserver: close connection by timeout\n");
-					close_connection(index, pconnection_pool);
+			// запуск таймера для чтения
+			start_timer_connection(connection);
+			int32_t result = recv(connection->socketfd, connection->receive_buffer, connection->receive_buffer_size, 0);
+			stop_timer_connection(connection);
+
+			if(result > 0)
+			{
+				WS_DEBUG("webserver: webserver recv sockfd %d\n", connection->socketfd);
+
+				// store real read size
+				connection->receive_buffer_size = result;
+				webserver_connection_handle(connection);
+
+				WS_DEBUG("webserver: timeout: %d, processed: %d\n", connection->timeout, connection->processed);
+				if(connection->timeout == 1)
+				{	// connection already closed
+					WS_DEBUG("webserver: connection timeout detected!\n");
 				}
-				else if(pconnection_pool->data[index]->processed)
+				else if(connection->processed == 1)
 				{
 					WS_DEBUG("webserver: close processed connection\n");
-					connection_send_data(index, pconnection_pool);
-					close_connection(index, pconnection_pool);
+					connection_send_data(connection);
 				}
-            }
-#endif
-        }
-		else if(ret == -1)
-		{ //select timerout out, wait again. 
-            WS_DEBUG("webserver: ##WS select timeout##\n");
-        }
-        
-        /*for develop test only*/
-        if(stack_counter++ == 1)
-		{
-            stack_counter = 0;
-            WS_DEBUG("webserver: webserver_recv_thread %d word left\n", uxTaskGetStackHighWaterMark(NULL));
-        }
-    }
-
-    for(uint8_t index = 0; index < CONNECTION_POOL_SIZE && pconnection_pool->size; index++)
-	{
-        //find all valid handle 
-        if(pconnection_pool->data[index]->socketfd >= 0)
-		{
-            os_timer_disarm((os_timer_t *)&pconnection_pool->data[index]->stop_watch);
-			close_connection(index, pconnection_pool);
-        }
-    }
-    
-#ifdef SERVER_SSL_ENABLE
-    ssl_ctx_free(ssl_ctx);
-#endif
-
-    if(precvbuf != NULL)
-	{
-        free(precvbuf);
-    }
-
-    vQueueDelete(RCVQueueStop);
-    RCVQueueStop = NULL;
+			}
+			else if(connection->timeout == 1)
+			{	// connection already closed
+				WS_DEBUG("webserver: connection timeout detected!\n");
+			}
+			else if(connection->timeout = 0)
+			{	//recv error,connection close
+				WS_DEBUG("webserver: close sockfd %d !\n", connection->socketfd);
+			}
+			close_connection(connection);
+			cleanup_connection(connection);
+		}
+	}
+    vQueueDelete(webserver_client_task_stop);
+    webserver_client_task_stop = NULL;
     vTaskDelete(NULL);
 }
-
-void webserver_recv_task_start(struct connections_pool* pconnections)
-{
-    if (RCVQueueStop == NULL)
-	{
-        RCVQueueStop = xQueueCreate(1,1);
-	}
-    
-    if (RCVQueueStop != NULL)
-	{	///@todo read about task memory
-        sys_thread_new("websrecv_thread", webserver_recv_thread, pconnections, 512, 6);//1024, 704 left 320 used
-    }
-}
-
-int8_t webserver_recv_task_stop(void)
-{
-    bool ValueToSend = true;
-    portBASE_TYPE xStatus;
-    if (RCVQueueStop == NULL)
-	{
-        return -1;
-	}
-
-    xStatus = xQueueSend(RCVQueueStop,&ValueToSend,0);
-    if (xStatus != pdPASS)
-	{
-        WS_DEBUG("webserver: Could not send to the rcvqueue!\n");
-        return -1;
-    } 
-	else 
-	{
-        taskYIELD();
-        return pdPASS;
-    }
-}
-
 
 LOCAL void webserver_task(void *pvParameters)
 {
 	WS_DEBUG("webserver: started, STOP_TIMER: %d, RECV_BUF_SIZE: %d, SEND_BUF_SIZE: %d, PRINT_BUFFER_SIZE: %d, CONNECTION_POOL_SIZE: %d\n",
 			STOP_TIMER, RECV_BUF_SIZE, SEND_BUF_SIZE, PRINT_BUFFER_SIZE, CONNECTION_POOL_SIZE);
 
-    int32_t listenfd;
-    int32_t len;
-    int32_t ret;
-    uint8_t index;
-    
-    struct ip_info ipconfig;
-    struct connections_pool* pconnection_pool;
-    struct sockaddr_in server_addr, remote_addr;
-
-    portBASE_TYPE xStatus;
-    bool ValueFromReceive = false;
-
-    int stack_counter = 0;
-    
-    /* Construct local address structure */
-    memset(&server_addr, 0, sizeof(server_addr)); /* Zero out structure */
-    server_addr.sin_family = AF_INET;            /* Internet address family */
-    server_addr.sin_addr.s_addr = INADDR_ANY;   /* Any incoming interface */
-    server_addr.sin_len = sizeof(server_addr);  
-#ifdef SERVER_SSL_ENABLE
-    server_addr.sin_port = htons(WEB_SERVER_SSL_PORT); /* Local SSL port */
-#else
-    server_addr.sin_port = htons(WEB_SERVER_PORT); /* Local port */
-#endif
-
-    /* Create socket for incoming connections */
-    do
-	{
-        listenfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (listenfd == -1) 
-		{
-            WS_DEBUG("C > user_webserver_task failed to create sock!\n");
-            vTaskDelay(1000 / portTICK_RATE_MS);
-        }
-    } 
-	while(listenfd == -1);
-
-    /* Bind to the local address */
-    do
-	{
-        ret = bind(listenfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-        if (ret != 0) 
-		{
-            WS_DEBUG("C > user_webserver_task failed to bind sock!\n");
-            vTaskDelay(1000 / portTICK_RATE_MS);
-        }
-    }
-	while(ret != 0);
-
-    do
-	{
-        /* Listen to the local connection */
-        ret = listen(listenfd, CONNECTION_POOL_SIZE);
-        if (ret != 0) 
-		{
-            WS_DEBUG("C > user_webserver_task failed to set listen queue!\n");
-            vTaskDelay(1000 / portTICK_RATE_MS);
-        }
-    }
-	while(ret != 0);
-    
-    /*initialize as connections set*/
-    connection_pool_init();
-    pconnection_pool = &connections;
-    
-    /*start a task to recv data from client*/
-	webserver_recv_task_start(pconnection_pool);
+	int32_t listen_socket = webserver_start_listen();
 
 	while(1)
     {
 		// checking stop flag
-		xStatus = xQueueReceive(QueueStop, &ValueFromReceive, 0);
-		if (pdPASS == xStatus && TRUE == ValueFromReceive)
+		if(check_stop_condition(&webserver_task_stop))
 		{
-			WS_DEBUG("user_webserver_task rcv exit signal!\n");
+			WS_DEBUG("webserver: webserver_task rcv exit signal!\n");
 			break;
 		}
 
+		struct sockaddr_in remote_addr;
+		uint32_t len = sizeof(struct sockaddr_in);
+
 		/*block here waiting remote connect request*/
-		len = sizeof(struct sockaddr_in);
-		int32_t remotefd = accept(listenfd, (struct sockaddr *)&remote_addr, (socklen_t *)&len);
+		int32_t remotefd = accept(listen_socket, (struct sockaddr *)&remote_addr, (socklen_t *)&len);
 		if(remotefd != -1)
 		{
-			//find the fisrt usable connections param to save the handle.
-			for(index = 0; index < CONNECTION_POOL_SIZE; index++)
-			{
-				if(pconnection_pool->data[index]->socketfd < 0)
-				{
-					break;
-				}
-			}
-
-			if(index < CONNECTION_POOL_SIZE)
-			{
-				accept_connection(index, pconnection_pool, remotefd);
-
-				// установка таймаута на обработку запроса
-				os_timer_disarm(&pconnection_pool->data[index]->stop_watch);
-				os_timer_setfn(&pconnection_pool->data[index]->stop_watch, (os_timer_func_t *)webserver_conn_watcher, pconnection_pool->data[index]);
-				os_timer_arm(&pconnection_pool->data[index]->stop_watch, STOP_TIMER, 0);
-
-				WS_DEBUG("webserver: acpt index:%d sockfd %d!\n",index, remotefd);
-			}
-			else
+			if(!xQueueSend(socket_queue, &remotefd, STOP_TIMER / portTICK_RATE_MS))
 			{
 				close(remotefd);
-				WS_DEBUG("webserver: TOO MUCH CONNECTION, CHECK ITer!\n");
+				WS_DEBUG("webserver: can't push client socket to queue\n");
 			}
 		}
 		else
 		{
-			WS_DEBUG("webserver: remote error: %d, WARNING!\n", remotefd);
-		}
-
-		///@todo remove debug info when failed accept connection
-		if(stack_counter++ == 1)
-		{
-			stack_counter = 0;
-			WS_DEBUG("user_webserver_task %d word left\n", uxTaskGetStackHighWaterMark(NULL));
+			WS_DEBUG("webserver: accept failed error: %d\n", remotefd);
 		}
     }
-	
-	// stop recv task
-	webserver_recv_task_stop();
-    
-    close(listenfd);
-    vQueueDelete(QueueStop);
-    QueueStop = NULL;
+    close(listen_socket);
+
+    vQueueDelete(webserver_task_stop);
+    webserver_task_stop = NULL;
 	handlers = NULL;
     vTaskDelete(NULL);
 }
 
 void webserver_start(struct http_handler_rule *user_handlers)
 {
-    if(QueueStop == NULL)
-	{
-        QueueStop = xQueueCreate(1, 1);
-	}
-
 	if(handlers == NULL)
 	{
 		handlers = user_handlers;
 	}
 
-    if(QueueStop != NULL)
+    if(webserver_task_stop == NULL)
+	{
+        webserver_task_stop = xQueueCreate(1, sizeof(bool));
+	}
+
+    if(webserver_client_task_stop == NULL)
+	{
+        webserver_client_task_stop = xQueueCreate(1, sizeof(bool));
+	}
+
+	if(socket_queue == NULL)
+	{
+		socket_queue = xQueueCreate(CONNECTION_POOL_SIZE, sizeof(int32_t));
+	}
+
+    if(webserver_task_stop != NULL && socket_queue != NULL)
 	{	///@todo read about task memory
         xTaskCreate(webserver_task, "webserver", 280, NULL, 4, NULL); //512, 376 left,136 used
+		xTaskCreate(webserver_client_task, "webserver_client", 280, NULL, 4, NULL);
 	}
 }
 
 int8_t webserver_stop(void)
 {
-    bool ValueToSend = true;
-    portBASE_TYPE xStatus;
-    if (QueueStop == NULL)
+	int8_t result = 0;
+    if (webserver_task_stop == NULL || webserver_client_task_stop == NULL)
 	{
-        return -1;
+        result -1;
 	}
-
-    xStatus = xQueueSend(QueueStop, &ValueToSend, 0);
-    if (xStatus != pdPASS)
-	{
-        WS_DEBUG("webserver: Could not send to the queue!\n");
-        return -1;
-    } 
 	else
 	{
-        taskYIELD();
-        return pdPASS;
-    }
+		bool ValueToSend = true;
+		portBASE_TYPE xStatus = xQueueSend(webserver_task_stop, &ValueToSend, 0);
+		if (xStatus != pdPASS)
+		{
+			WS_DEBUG("webserver: Could not send stop to webserver_task\n");
+		} 
+		else
+		{
+			taskYIELD();
+			result = pdPASS;
+		}
+
+		xStatus = xQueueSend(webserver_client_task_stop, &ValueToSend, 0);
+		if (xStatus != pdPASS)
+		{
+			WS_DEBUG("webserver: Could not send stop to webserver_client_task\n");
+		} 
+		else
+		{
+			taskYIELD();
+			result = pdPASS;
+		}
+	}
+	return result;
 }
 
 

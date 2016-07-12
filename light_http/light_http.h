@@ -5,8 +5,6 @@
 #include "esp_libc.h"
 #include "user_config.h"
 
-//#include "light_http_config.h"
-
 /**
  * @brief Время на обработку запроса millisecond
  */
@@ -118,7 +116,7 @@ const char* query_get_uri(struct query* query);
  * @param[in] status Статус ответа
  * @param[in] query Указатель на запрос
  */
-void query_response_status(short status, struct query* query);
+void query_response_status(int32_t status, struct query* query);
 
 /**
  * @brief Метод для отправки заголовка ответа
