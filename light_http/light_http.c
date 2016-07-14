@@ -28,7 +28,7 @@
  */
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
-static struct http_handler_rule *handlers = NULL;
+LOCAL struct http_handler_rule *handlers = NULL;
 
 /**
  * @brief Структура для заголовка
@@ -72,7 +72,7 @@ struct connection
 	int32_t socketfd;				///< сокет хандл клиента
 	int32_t timeout;				///< флаг срабатывания таймаута
 	int32_t processed;				///< флаг отвечающий за процессинг
-	os_timer_t stop_watch;			///< таймер для таймаута
+	/*os_timer_t stop_watch;			///< таймер для таймаута*/
 
 	char* receive_buffer;			///< буффер с данными прочитанными из сокета
 	int32_t receive_buffer_size;	///< размер буфера с данными
@@ -180,7 +180,7 @@ const char* query_get_uri(struct query* query)
 	return query->uri;
 }
 
-LOCAL bool query_response_append(struct query* query, const char* data, uint32_t size)
+bool query_response_append(struct query* query, const char* data, uint32_t size)
 {
 	if(query != NULL)
 	{
@@ -224,15 +224,14 @@ void query_response_header(const char* name, const char* value, struct query* qu
 	}
 
 	// calculate buffer size
-	uint32_t size = strlen(name) + strlen(value) + STATIC_STRLEN("\r\n");
-	if(size > PRINT_BUFFER_SIZE)
+	uint32_t size = strlen(name) + strlen(value) + STATIC_STRLEN(": \r\n");
+	if(size >= PRINT_BUFFER_SIZE)
 	{
 		WS_DEBUG("webserver: header size: %d greater when PRINT_BUFFER_SIZE: %d\n", size, PRINT_BUFFER_SIZE);
 		return;
 	}
 	char buff[PRINT_BUFFER_SIZE] = { 0 };
-
-	size = sprintf(buff, "%s: %s", name, value);
+	size = sprintf(buff, "%s: %s\r\n", name, value);
 	query_response_append(query, buff, size);
 }
 
@@ -240,6 +239,14 @@ void query_response_body(const char* data, uint32_t length, struct query* query)
 {
 	if(query != NULL)
 	{
+		/*char buff[PRINT_BUFFER_SIZE] = { 0 };*/
+		/*sprintf(buff, "%u", length);*/
+		/*query_response_header("Content-Length", buff, query);*/
+
+		char buff[PRINT_BUFFER_SIZE] = { 0 };
+		int32_t size = sprintf(buff, "Content-Length: %u\r\n", length);
+		query_response_append(query, buff, size);
+
 		query_response_append(query, "\r\n", STATIC_STRLEN("\r\n"));
 		query_response_append(query, data, length);
 	}
@@ -267,6 +274,8 @@ LOCAL struct query* init_query()
 	query->post_params = NULL;
 
 	query->response_body = (char*)zalloc(SEND_BUF_SIZE);
+	/*query->response_body = (char*)malloc(SEND_BUF_SIZE);*/
+	/*memset(query->response_body, 'a', SEND_BUF_SIZE);*/
 	query->response_body_length = 0;
 
 	return query;
@@ -392,11 +401,11 @@ LOCAL void stop_timer_connection(struct connection *connection)
 {
 	if(connection != NULL)
 	{
-		os_timer_disarm(&connection->stop_watch);
+		/*os_timer_disarm(&connection->stop_watch);*/
 	}
 	else
 	{
-		WS_DEBUG("webserver: start_timer_connection invalid pointer\n");
+		WS_DEBUG("webserver: stop_timer_connection invalid pointer\n");
 	}
 }
 
@@ -409,9 +418,9 @@ LOCAL void start_timer_connection(struct connection *connection)
 {
 	if(connection != NULL)
 	{
-		stop_timer_connection(connection);
-		os_timer_setfn(&connection->stop_watch, (os_timer_func_t *)webserver_conn_watcher, connection);
-		os_timer_arm(&connection->stop_watch, STOP_TIMER, 0);
+		/*stop_timer_connection(connection);*/
+		/*os_timer_setfn(&connection->stop_watch, (os_timer_func_t *)webserver_conn_watcher, connection);*/
+		/*os_timer_arm(&connection->stop_watch, STOP_TIMER, 0);*/
 	}
 	else
 	{
@@ -429,14 +438,16 @@ LOCAL uint32_t connection_send_data(struct connection* connection)
 	{
 		if(connection->query != NULL)
 		{
+			/*stop_timer_connection(connection);*/
 			// запуск таймера, если не успеем отправить ответ, то сокет закроеться
-			start_timer_connection(connection);
+			/*start_timer_connection(connection);*/
 			if (connection->query->response_body_length != 0)
 			{
 				writed = write(connection->socketfd, (uint8_t*)connection->query->response_body, connection->query->response_body_length);
+				/*writed = write(connection->socketfd, (uint8_t*)"123123", STATIC_STRLEN("123123"));*/
 				connection->query->response_body_length = 0;
 			}
-			stop_timer_connection(connection);
+			/*stop_timer_connection(connection);*/
 		}
 	}
 	return writed;
@@ -447,7 +458,7 @@ LOCAL uint32_t connection_send_data(struct connection* connection)
  */
 LOCAL void webserver_conn_watcher(struct connection *connection)
 {
-	os_timer_disarm(&connection->stop_watch);
+	/*os_timer_disarm(&connection->stop_watch);*/
 	connection->timeout = 1;
 	close_connection(connection);
 
@@ -870,9 +881,9 @@ LOCAL void webserver_client_task(void *pvParameters)
 			}
 
 			// запуск таймера для чтения
-			start_timer_connection(connection);
+			/*start_timer_connection(connection);*/
 			int32_t result = recv(connection->socketfd, connection->receive_buffer, connection->receive_buffer_size, 0);
-			stop_timer_connection(connection);
+			/*stop_timer_connection(connection);*/
 
 			if(result > 0)
 			{

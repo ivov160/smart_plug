@@ -24,8 +24,8 @@ SPECIAL_MKTARGETS=$(APP_MKTARGETS)
 SUBDIRS=    	\
 	user   		\
 	driver		\
-	light_http	\
-	esp-gdbstub
+	light_http	
+	#esp-gdbstub
 
 endif # } PDIR
 
@@ -55,8 +55,8 @@ TARGET_LDFLAGS =		\
 COMPONENTS_eagle.app.v6 = \
 	user/libuser.a	\
 	driver/libdriver.a \
-	light_http/liblight_http.a \
-	esp-gdbstub/libgdbstub.a
+	light_http/liblight_http.a  
+	#esp-gdbstub/libgdbstub.a
 
 LINKFLAGS_eagle.app.v6 =    \
     -L$(SDK_PATH)/lib       \
@@ -68,10 +68,12 @@ LINKFLAGS_eagle.app.v6 =    \
     -Wl,-static             \
     -Wl,--start-group       \
     -lcirom                 \
+    -lmirom                 \
     -lgcc                   \
     -lhal                   \
     -lcrypto                \
     -lfreertos              \
+	-ljson					\
     -llwip                  \
     -lmain                  \
     -lnet80211              \
