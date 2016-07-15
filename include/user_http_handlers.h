@@ -4,6 +4,6 @@
 #include "user_config.h"
 #include "light_http.h"
 
-int test_http_handler(struct query *query);
+int http_system_info_handler(struct query *query);
 
 #endif

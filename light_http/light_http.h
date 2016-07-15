@@ -120,21 +120,10 @@ void query_response_status(int32_t status, struct query* query);
 
 /**
  * @brief Метод для отправки заголовка ответа
- * @bug хз но после использования падает все с переполнение heap
  * @param[in] status Статус ответа
  * @param[in] query Указатель на запрос
  */
 void query_response_header(const char* name, const char* value, struct query* query);
-
-/** 
- * @brief Функция для докидывания данных в выходной буфер
- * @note Функция возможно не будет светиться в .h
- * @param[in] query Указатель на запрос
- * @param[in] data Данные
- * @param[in] size Размер данных
- * @return true - все хорошо, инача false
- */
-bool query_response_append(struct query* query, const char* data, uint32_t size);
 
 /**
  * @brief Метод для отправки тела ответа
@@ -142,7 +131,7 @@ bool query_response_append(struct query* query, const char* data, uint32_t size)
  * @param[in] length Размер тела
  * @param[in] query Указатель на запрос
  */
-void query_response_body(const char* data, uint32_t length, struct query* query);
+void query_response_body(const char* data, int32_t length, struct query* query);
 
 /**
  * @brief Метод для запуска сервера

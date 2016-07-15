@@ -28,6 +28,10 @@
  */
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
+/**
+ * @brief Обрабочики запросов
+ * Инициализируется при старте web сервера
+ */
 LOCAL struct http_handler_rule *handlers = NULL;
 
 /**
@@ -180,7 +184,7 @@ const char* query_get_uri(struct query* query)
 	return query->uri;
 }
 
-bool query_response_append(struct query* query, const char* data, uint32_t size)
+LOCAL bool query_response_append(const char* data, uint32_t size, struct query* query)
 {
 	if(query != NULL)
 	{
@@ -208,7 +212,7 @@ void query_response_status(int32_t status, struct query* query)
 				"Server: light-httpd/0.1\r\n"
 				"Connection: close\r\n", status);
 
-		query_response_append(query, buff, size);
+		query_response_append(buff, size, query);
 	}
 	else
 	{
@@ -218,37 +222,24 @@ void query_response_status(int32_t status, struct query* query)
 
 void query_response_header(const char* name, const char* value, struct query* query)
 {
-	if(query == NULL)
+	if(query != NULL)
 	{
-		return;
+		char buff[PRINT_BUFFER_SIZE] = { 0 };
+		int32_t size = sprintf(buff, "%s: %s\r\n", name, value);
+		query_response_append(buff, size, query);
 	}
-
-	// calculate buffer size
-	uint32_t size = strlen(name) + strlen(value) + STATIC_STRLEN(": \r\n");
-	if(size >= PRINT_BUFFER_SIZE)
-	{
-		WS_DEBUG("webserver: header size: %d greater when PRINT_BUFFER_SIZE: %d\n", size, PRINT_BUFFER_SIZE);
-		return;
-	}
-	char buff[PRINT_BUFFER_SIZE] = { 0 };
-	size = sprintf(buff, "%s: %s\r\n", name, value);
-	query_response_append(query, buff, size);
 }
 
-void query_response_body(const char* data, uint32_t length, struct query* query)
+void query_response_body(const char* data, int32_t length, struct query* query)
 {
 	if(query != NULL)
 	{
-		/*char buff[PRINT_BUFFER_SIZE] = { 0 };*/
-		/*sprintf(buff, "%u", length);*/
-		/*query_response_header("Content-Length", buff, query);*/
-
 		char buff[PRINT_BUFFER_SIZE] = { 0 };
 		int32_t size = sprintf(buff, "Content-Length: %u\r\n", length);
-		query_response_append(query, buff, size);
+		query_response_append(buff, size, query);
 
-		query_response_append(query, "\r\n", STATIC_STRLEN("\r\n"));
-		query_response_append(query, data, length);
+		query_response_append("\r\n", STATIC_STRLEN("\r\n"), query);
+		query_response_append(data, length, query);
 	}
 }
 
@@ -274,8 +265,6 @@ LOCAL struct query* init_query()
 	query->post_params = NULL;
 
 	query->response_body = (char*)zalloc(SEND_BUF_SIZE);
-	/*query->response_body = (char*)malloc(SEND_BUF_SIZE);*/
-	/*memset(query->response_body, 'a', SEND_BUF_SIZE);*/
 	query->response_body_length = 0;
 
 	return query;
@@ -688,7 +677,6 @@ LOCAL bool webserver_parse_request(struct connection *connection)
 		iter += STATIC_STRLEN("\r\n\r\n");
 	}
 
-	WS_DEBUG("webserver: before parse headers\n");
 	if(!webserver_parse_request_headers(connection, connection->receive_buffer))
 	{
 		WS_DEBUG("webserver: parse request headers failed\n");
@@ -864,8 +852,7 @@ LOCAL void webserver_client_task(void *pvParameters)
 
 		int32_t client_socket = 0;
 		if(!xQueueReceive(socket_queue, &client_socket, STOP_TIMER / portTICK_RATE_MS))
-		{	///@todo удалить отладочный print после теста (штатная ситуация при пустой очереди)
-			WS_DEBUG("webserver: empty socket_queue\n");
+		{
 			taskYIELD();
 		}
 		else
@@ -927,8 +914,7 @@ LOCAL void webserver_task(void *pvParameters)
 			STOP_TIMER, RECV_BUF_SIZE, SEND_BUF_SIZE, PRINT_BUFFER_SIZE, CONNECTION_POOL_SIZE);
 
 	int32_t listen_socket = webserver_start_listen();
-
-	while(1)
+	while(true)
     {
 		// checking stop flag
 		if(check_stop_condition(&webserver_task_stop))

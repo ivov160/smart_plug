@@ -3,13 +3,13 @@
 
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
-int test_http_handler(struct query *query)
+int http_system_info_handler(struct query *query)
 {
 	const char* ptr = query_get_header("Test", query);
 	os_printf("user_handler: header test: %s\n", (ptr != NULL ? ptr : "HZ"));
 	query_response_status(200, query);
 
-	query_response_append(query, "Content-Type: application/json\r\n", STATIC_STRLEN("Content-Type: application/json\r\n"));
+	query_response_header("Content-Type", "application/json", query);
 
 	cJSON *json_root = cJSON_CreateObject();
 	cJSON_AddStringToObject(json_root, "action", "test");
@@ -20,6 +20,9 @@ int test_http_handler(struct query *query)
 
 	char* data = cJSON_Print(json_root);
 	query_response_body(data, strlen(data), query);
+
+	free(data);
+	cJSON_Delete(json_root);
 
 	return 1;
 }

@@ -24,7 +24,7 @@ LOCAL os_timer_t blink_timer;
 
 static struct http_handler_rule handlers[] = 
 {	
-	{ "/test", test_http_handler },
+	{ "/system_info", http_system_info_handler },
 	{ NULL, NULL },
 };
 
