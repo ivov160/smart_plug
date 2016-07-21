@@ -5,7 +5,6 @@
 #include "freertos/task.h"
 
 #include "esp_common.h"
-/*#include "esp_libc.h"*/
 
 #include "lwip/sockets.h"
 #include "lwip/err.h"

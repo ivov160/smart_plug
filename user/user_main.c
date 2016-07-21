@@ -5,36 +5,95 @@
 
 #include "uart.h"
 #include "wifi_station.h"
+#include "spiffs/spiffs.h"
 
 #include "user_http_handlers.h"
 #include "light_http.h"
+#include "../flash/flash.h"
 
-const char *FlashSizeMap[] =
-{
-		"512 KB (256 KB + 256 KB)",	// 0x00
-		"256 KB",			// 0x01
-		"1024 KB (512 KB + 512 KB)", 	// 0x02
-		"2048 KB (512 KB + 512 KB)"	// 0x03
-		"4096 KB (512 KB + 512 KB)"	// 0x04
-		"2048 KB (1024 KB + 1024 KB)"	// 0x05
-		"4096 KB (1024 KB + 1024 KB)"	// 0x06
-};
 
-LOCAL os_timer_t blink_timer;
+LOCAL os_timer_t info_timer;
 
 static struct http_handler_rule handlers[] = 
 {	
-	{ "/system_info", http_system_info_handler },
+	{ "/getSystemInfo", http_system_info_handler },
+	{ "/getDeviceInfo", http_get_device_info_handler },
+	{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },
 	{ NULL, NULL },
 };
 
-LOCAL void blinker(void *p_args)
+LOCAL void system_info(void *p_args)
 {
 	os_printf("system: SDK version:%s rom %d\r\n", system_get_sdk_version(), system_upgrade_userbin_check());
 	os_printf("system: Chip id = 0x%x\r\n", system_get_chip_id());
 	os_printf("system: CPU freq = %d MHz\r\n", system_get_cpu_freq());
-	os_printf("system: Flash size map = %s\r\n", FlashSizeMap[system_get_flash_size_map()]);
 	os_printf("system: Free heap size = %d\r\n", system_get_free_heap_size());
+}
+
+LOCAL void scan_callback(void *args, STATUS status)
+{
+	if(args != NULL)
+	{
+		struct bss_info* bss_list = (struct bss_info*) args;
+		struct bss_info *bss = bss_list;
+
+		uint32_t wifi_index = 0;
+
+		/*while((bss = STAILQ_FIRST(bss_list)) != NULL && count-- )*/
+		while(bss != NULL && wifi_index < WIFI_LIST_SIZE)
+		{
+			struct wifi_info info;
+			memset(&info, 0, sizeof(struct wifi_info));
+
+			os_printf("wifi: scaned ssid: `%s`\n", bss->ssid);
+
+			if(bss->ssid_len < WIFI_NAME_SIZE - 1)
+			{
+				memcpy(info.name, bss->ssid, bss->ssid_len);
+				// явный нолик
+				info.name[WIFI_NAME_SIZE - 1] = 0;
+
+				if(!write_wifi_info(&info, wifi_index))
+				{
+					os_printf("wifi: failed save wifi settings by index: %d\n", wifi_index);
+				}
+				else
+				{
+					++wifi_index;
+				}
+			}
+			else
+			{
+				os_printf("wifi: ssid is too long ssid: `%s`\n", bss->ssid);
+			}
+			bss = STAILQ_NEXT(bss, next);
+		}
+		free(args);
+	}
+	else
+	{
+		os_printf("wifi: scan results arg is NULL\n");
+	}
+}
+
+LOCAL void scan_wifi()
+{
+	struct scan_config scan;
+	while(!wifi_station_scan(&scan, scan_callback))
+	{
+		os_printf("wifi: failed start scan stations\n");
+		vTaskDelay(1000 / portTICK_RATE_MS);
+	}
+}
+
+LOCAL void main_task(void *pvParameters)
+{
+	scan_wifi();
+	while(true)
+	{
+		vTaskDelay(1000 / portTICK_RATE_MS);
+	}
+    vTaskDelete(NULL);
 }
 
 void user_init(void)
@@ -44,8 +103,11 @@ void user_init(void)
 
 	/*gdbstub_init();*/
 
-	os_timer_setfn(&blink_timer, blinker, NULL);
-	os_timer_arm(&blink_timer, 4000, true);
+	os_timer_setfn(&info_timer, system_info, NULL);
+	os_timer_arm(&info_timer, 4000, true);
+
+	///@todo read about task memory
+	xTaskCreate(main_task, "main_task", 280, NULL, 4, NULL);
 
 	start_wifi();
 	webserver_start(handlers);

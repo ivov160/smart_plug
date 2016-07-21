@@ -24,7 +24,8 @@ SPECIAL_MKTARGETS=$(APP_MKTARGETS)
 SUBDIRS=    	\
 	user   		\
 	driver		\
-	light_http	
+	light_http	\
+	flash
 	#esp-gdbstub
 
 endif # } PDIR
@@ -55,7 +56,8 @@ TARGET_LDFLAGS =		\
 COMPONENTS_eagle.app.v6 = \
 	user/libuser.a	\
 	driver/libdriver.a \
-	light_http/liblight_http.a  
+	light_http/liblight_http.a \
+	flash/libflash.a
 	#esp-gdbstub/libgdbstub.a
 
 LINKFLAGS_eagle.app.v6 =    \
