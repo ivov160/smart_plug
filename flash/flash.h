@@ -37,33 +37,6 @@ struct custom_name
 	char data[CUSTOM_NAME_SIZE];
 };
 
-struct layout_meta_info
-{
-	uint32_t custom_name_offset;
-	uint32_t custom_name_addr;
-
-	uint32_t current_device_offset;
-	uint32_t current_device_addr;
-
-	uint32_t wifi_list_offset;
-	uint32_t wifi_list_addr;
-
-	uint32_t device_list_offset;
-	uint32_t device_list_addr;
-};
-
-/**
- * @brief Возврощает информацию о flash
- * @return Указатель на раскройку карты (указатель возарощается на статический объект)
- */
-struct layout_meta_info* get_layout_info();
-
-/**
- * @brief Функция для сброса всей карты памяти
- * @return Результат опирации успех - провал
- */
-bool erase_layout();
-
 /** 
  * @brief функция для чтения имени устройства
  * Читает с flash имя устройства установленное пользователем
@@ -82,8 +55,9 @@ bool write_current_device(struct device_info* info);
 
 bool read_wifi_info(struct wifi_info* info, uint32_t index);
 bool write_wifi_info(struct wifi_info* info, uint32_t index);
-/*bool exist_wifi_info(uint32_t index);*/
+uint32_t get_wifi_info_list_size();
 /*bool erase_wifi_info(uint32_t index);*/
+/*bool exist_wifi_info(uint32_t index);*/
 
 /*bool read_device_info(struct device_info* info, uint32_t index);*/
 /*bool write_device_info(struct device_info* info, uint32_t index);*/

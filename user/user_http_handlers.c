@@ -36,9 +36,14 @@ int http_get_device_info_handler(struct query *query)
 {
 	struct ip_info ip_info;
 	struct device_info info;
+	struct custom_name name_info;
+
+	memset(&name_info, 0, sizeof(struct custom_name));
+	memset(&info, 0, sizeof(struct device_info));
+
 	cJSON *json_root = cJSON_CreateObject();
 
-	if(read_current_device(&info) && wifi_get_ip_info(SOFTAP_IF, &ip_info))
+	if(read_custom_name(&name_info) && read_current_device(&info) && wifi_get_ip_info(SOFTAP_IF, &ip_info))
 	{
 		cJSON *json_data = cJSON_CreateObject();
 		cJSON_AddItemToObject(json_root, "data", json_data);
@@ -48,7 +53,16 @@ int http_get_device_info_handler(struct query *query)
 
 		cJSON_AddNumberToObject(json_data, "powered", info.device_type >> 7);
 		cJSON_AddNumberToObject(json_data, "type", info.device_type & 0x0F);
-		cJSON_AddStringToObject(json_data, "name", "unknown");
+
+		if(strnlen(name_info.data, CUSTOM_NAME_SIZE) > 0)
+		{
+			cJSON_AddStringToObject(json_data, "name", name_info.data);
+		}
+		else
+		{
+			cJSON_AddStringToObject(json_data, "name", "undefined");
+		}
+
 		cJSON_AddStringToObject(json_data, "ip", ip_print_buffer);
 		cJSON_AddBoolToObject(json_root, "success", true);
 	}
@@ -75,26 +89,24 @@ int http_get_wifi_info_list_handler(struct query *query)
 	cJSON *json_root = cJSON_CreateObject();
 	cJSON *json_data = cJSON_CreateArray();
 
-	uint32_t wifi_index = 0;
-	while(wifi_index < WIFI_LIST_SIZE)
+	uint32_t count = get_wifi_info_list_size();
+	os_printf("http: wifi_list size: %d\n", count);
+
+	for(uint32_t i = 0; i < count; ++i, ++result)
 	{
 		struct wifi_info info;
-		if(!read_wifi_info(&info, wifi_index))
+		memset(&info, 0, sizeof(struct wifi_info));
+
+		if(!read_wifi_info(&info, i))
 		{
 			result = 0;
 			break;
 		}
 
-		if(strlen(info.name) == 0)
-		{	// возможно конец списка (не дошли до граници, но данных нет)
-			/*break;*/
-			continue;
-		}
 		os_printf("http: ssid: `%s`\n", info.name);
 
 		cJSON *json_value = cJSON_CreateString(info.name);
 		cJSON_AddItemToArray(json_data, json_value);
-		++wifi_index;
 	}
 	
 	cJSON_AddBoolToObject(json_root, "success", (result ? true : false));
@@ -114,6 +126,53 @@ int http_get_wifi_info_list_handler(struct query *query)
 	query_response_body(data, strlen(data), query);
 
 	free(data);
+	cJSON_Delete(json_root);
+
+	return result;
+}
+
+
+int http_set_device_name_handler(struct query *query)
+{
+	int result = 0;
+	const char* device_name = query_get_param("name", query, REQUEST_POST);
+	if(device_name != NULL)
+	{
+		os_printf("http: new device name: `%s`\n", device_name);
+
+		int32_t device_name_size = strnlen(device_name, CUSTOM_NAME_SIZE - 1);
+		if(device_name_size < CUSTOM_NAME_SIZE - 1)
+		{
+			struct custom_name name;
+			memset(&name, 0xFF, sizeof(struct custom_name));
+			memcpy(name.data, device_name, device_name_size);
+
+			// явный нолик
+			name.data[CUSTOM_NAME_SIZE] = 0;
+			name.data[device_name_size] = 0;
+			if(write_custom_name(&name))
+			{
+				result = 1;
+			}
+		}
+		else
+		{
+			os_printf("http: too long new device name\n");
+		}
+	}
+	else
+	{
+		os_printf("http: empty new device name\n");
+	}
+
+	cJSON *json_root = cJSON_CreateObject();
+	cJSON_AddBoolToObject(json_root, "success", (result ? true : false));
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
 	cJSON_Delete(json_root);
 
 	return result;

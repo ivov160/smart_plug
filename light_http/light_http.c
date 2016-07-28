@@ -155,12 +155,15 @@ const char* query_get_param(const char* name, struct query* query, REQUEST_METHO
 		? query->get_params
 		: query->post_params;
 
-	for(struct query_pair** iter = target; *iter != NULL; ++iter)
+	if(target != NULL)
 	{
-		struct query_pair* ptr = *iter;
-		if(strcmp(ptr->name, name) == 0)
+		for(struct query_pair** iter = target; *iter != NULL; ++iter)
 		{
-			return ptr->value;
+			struct query_pair* ptr = *iter;
+			if(strcmp(ptr->name, name) == 0)
+			{
+				return ptr->value;
+			}
 		}
 	}
 	return NULL;
@@ -594,10 +597,6 @@ LOCAL bool webserver_parse_params(struct connection* connection, REQUEST_METHOD 
 		return false;
 	}
 
-	struct query_pair** target = m == REQUEST_GET 
-		? connection->query->get_params
-		: connection->query->post_params;
-
 	char* iter = data, *last = data;
 	WS_DEBUG("webserver: params data `%s`\n", data);
 
@@ -614,8 +613,21 @@ LOCAL bool webserver_parse_params(struct connection* connection, REQUEST_METHOD 
 		return false;
 	}
 
-	target = (struct query_pair **) zalloc(sizeof(struct query_pair*) * (params_counter + 1));
-	target[params_counter] = NULL;
+	if(m == REQUEST_GET)
+	{
+		connection->query->get_params = (struct query_pair **) zalloc(sizeof(struct query_pair*) * (params_counter + 1));
+		connection->query->get_params[params_counter] = NULL;
+	}
+	else
+	{
+		connection->query->post_params = (struct query_pair **) zalloc(sizeof(struct query_pair*) * (params_counter + 1));
+		connection->query->post_params[params_counter] = NULL;
+	}
+
+	struct query_pair** target = m == REQUEST_GET 
+		? connection->query->get_params
+		: connection->query->post_params;
+
 	for(uint32_t i = 0; i < params_counter; ++i)
 	{
 		target[i] = (struct query_pair*)zalloc(sizeof(struct query_pair));

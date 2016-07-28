@@ -25,8 +25,8 @@ SUBDIRS=    	\
 	user   		\
 	driver		\
 	light_http	\
-	flash
-	#esp-gdbstub
+	flash		\
+	esp-gdbstub
 
 endif # } PDIR
 
@@ -57,8 +57,8 @@ COMPONENTS_eagle.app.v6 = \
 	user/libuser.a	\
 	driver/libdriver.a \
 	light_http/liblight_http.a \
-	flash/libflash.a
-	#esp-gdbstub/libgdbstub.a
+	flash/libflash.a \
+	esp-gdbstub/libgdbstub.a
 
 LINKFLAGS_eagle.app.v6 =    \
     -L$(SDK_PATH)/lib       \
@@ -79,11 +79,8 @@ LINKFLAGS_eagle.app.v6 =    \
     -llwip                  \
     -lmain                  \
     -lnet80211              \
-    -lnopoll                \
     -lphy                   \
     -lpp                    \
-    -lsmartconfig           \
-    -lssl                   \
     -lwpa                   \
     $(DEP_LIBS_eagle.app.v6)\
     -Wl,--end-group
@@ -129,7 +126,7 @@ DDEFINES +=				\
 # Required for each makefile to inherit from the parent
 #
 
-INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)driver -I $(PDIR)light_http
+INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)driver -I $(PDIR)light_http -I $(PDIR)flash
 sinclude $(SDK_PATH)/Makefile
 
 .PHONY: FORCE

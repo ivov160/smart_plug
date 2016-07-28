@@ -9,7 +9,7 @@
 
 #include "user_http_handlers.h"
 #include "light_http.h"
-#include "../flash/flash.h"
+#include "flash.h"
 
 
 LOCAL os_timer_t info_timer;
@@ -19,6 +19,7 @@ static struct http_handler_rule handlers[] =
 	{ "/getSystemInfo", http_system_info_handler },
 	{ "/getDeviceInfo", http_get_device_info_handler },
 	{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },
+	{ "/setDeviceName", http_set_device_name_handler },
 	{ NULL, NULL },
 };
 
@@ -38,8 +39,6 @@ LOCAL void scan_callback(void *args, STATUS status)
 		struct bss_info *bss = bss_list;
 
 		uint32_t wifi_index = 0;
-
-		/*while((bss = STAILQ_FIRST(bss_list)) != NULL && count-- )*/
 		while(bss != NULL && wifi_index < WIFI_LIST_SIZE)
 		{
 			struct wifi_info info;
@@ -84,6 +83,50 @@ LOCAL void scan_wifi()
 		os_printf("wifi: failed start scan stations\n");
 		vTaskDelay(1000 / portTICK_RATE_MS);
 	}
+
+	/*char* name = "12312412";*/
+
+	/*struct custom_name n;*/
+	/*memset(&n, 0, sizeof(struct custom_name));*/
+	/*memcpy(n.data, name, strlen(name));*/
+	/*n.data[CUSTOM_NAME_SIZE - 1] = 0;*/
+
+	/*if(!write_custom_name(&n))*/
+	/*{*/
+		/*os_printf("wifi: failed write custom_name: `%s`\n", n.data);*/
+	/*}*/
+
+	/*memset(&n, 0, sizeof(struct custom_name));*/
+	/*if(!read_custom_name(&n))*/
+	/*{*/
+		/*os_printf("wifi: failed read custom_name\n");*/
+	/*}*/
+	/*else*/
+	/*{*/
+		/*os_printf("wifi: custom_name: %s\n", n.data);*/
+	/*}*/
+
+	/*struct wifi_info info;*/
+	/*memset(&info, 0, sizeof(struct wifi_info));*/
+
+	/*if(!read_wifi_info(&info, 0))*/
+	/*{*/
+		/*os_printf("wifi: failed read wifi_infi\n");*/
+	/*}*/
+	/*else*/
+	/*{*/
+		/*os_printf("wifi: wifi_info index: 0, name: %s\n", info.name);*/
+	/*}*/
+
+	/*sprintf(info.name, "vo-home");*/
+	/*sprintf(info.pass, "bmw24zq5");*/
+
+	/*// явный нолик*/
+	/*info.name[WIFI_NAME_SIZE - 1] = 0;*/
+	/*if(!write_wifi_info(&info, 0))*/
+	/*{*/
+		/*os_printf("wifi: failed save wifi settings by index: %d\n", 0);*/
+	/*}*/
 }
 
 LOCAL void main_task(void *pvParameters)
@@ -101,7 +144,7 @@ void user_init(void)
 	uart_init_new();
 	UART_SetBaudrate(UART0, BIT_RATE_115200);
 
-	/*gdbstub_init();*/
+	gdbstub_init();
 
 	os_timer_setfn(&info_timer, system_info, NULL);
 	os_timer_arm(&info_timer, 4000, true);
