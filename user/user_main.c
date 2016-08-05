@@ -23,7 +23,7 @@ static struct http_handler_rule handlers[] =
 	{ NULL, NULL },
 };
 
-LOCAL void system_info(void *p_args)
+LOCAL void ICACHE_FLASH_ATTR system_info(void *p_args)
 {
 	os_printf("system: SDK version:%s rom %d\r\n", system_get_sdk_version(), system_upgrade_userbin_check());
 	os_printf("system: Chip id = 0x%x\r\n", system_get_chip_id());
@@ -31,7 +31,7 @@ LOCAL void system_info(void *p_args)
 	os_printf("system: Free heap size = %d\r\n", system_get_free_heap_size());
 }
 
-LOCAL void scan_callback(void *args, STATUS status)
+void ICACHE_FLASH_ATTR scan_callback(void *args, STATUS status)
 {
 	if(args != NULL)
 	{
@@ -44,14 +44,13 @@ LOCAL void scan_callback(void *args, STATUS status)
 			struct wifi_info info;
 			memset(&info, 0, sizeof(struct wifi_info));
 
-			os_printf("wifi: scaned ssid: `%s`\n", bss->ssid);
+			os_printf("wifi: scaned ssid: `%s` size: %d index: %d\n", bss->ssid, bss->ssid_len, wifi_index);
 
-			if(bss->ssid_len < WIFI_NAME_SIZE - 1)
+			// do that because bss->ssid_len 0
+			uint8_t ssid_len = strnlen(bss->ssid, WIFI_NAME_SIZE);
+			if(ssid_len< WIFI_NAME_SIZE - 1)
 			{
-				memcpy(info.name, bss->ssid, bss->ssid_len);
-				// явный нолик
-				info.name[WIFI_NAME_SIZE - 1] = 0;
-
+				memcpy(info.name, bss->ssid, ssid_len);
 				if(!write_wifi_info(&info, wifi_index))
 				{
 					os_printf("wifi: failed save wifi settings by index: %d\n", wifi_index);
@@ -75,63 +74,39 @@ LOCAL void scan_callback(void *args, STATUS status)
 	}
 }
 
-LOCAL void scan_wifi()
+LOCAL void ICACHE_FLASH_ATTR scan_wifi()
 {
-	struct scan_config scan;
-	while(!wifi_station_scan(&scan, scan_callback))
+	/*struct scan_config scan;*/
+	/*while(!wifi_station_scan(&scan, scan_callback))*/
+	/*{*/
+		/*os_printf("wifi: failed start scan stations\n");*/
+		/*vTaskDelay(1000 / portTICK_RATE_MS);*/
+	/*}*/
+
+	struct custom_name n;
+	memset(&n, 0, sizeof(struct custom_name));
+	memcpy(n.data, "42", sizeof("42") - 1);
+
+	if(!write_custom_name(&n))
 	{
-		os_printf("wifi: failed start scan stations\n");
-		vTaskDelay(1000 / portTICK_RATE_MS);
+		os_printf("wifi: failed write custom_name: `%s`\n", n.data);
 	}
 
-	/*char* name = "12312412";*/
+	char* d = NULL;
+	*d = 'd';
 
-	/*struct custom_name n;*/
-	/*memset(&n, 0, sizeof(struct custom_name));*/
-	/*memcpy(n.data, name, strlen(name));*/
-	/*n.data[CUSTOM_NAME_SIZE - 1] = 0;*/
+	memset(&n, 0, sizeof(struct custom_name));
+	memcpy(n.data, "33", sizeof("33") - 1);
 
-	/*if(!write_custom_name(&n))*/
-	/*{*/
-		/*os_printf("wifi: failed write custom_name: `%s`\n", n.data);*/
-	/*}*/
-
-	/*memset(&n, 0, sizeof(struct custom_name));*/
-	/*if(!read_custom_name(&n))*/
-	/*{*/
-		/*os_printf("wifi: failed read custom_name\n");*/
-	/*}*/
-	/*else*/
-	/*{*/
-		/*os_printf("wifi: custom_name: %s\n", n.data);*/
-	/*}*/
-
-	/*struct wifi_info info;*/
-	/*memset(&info, 0, sizeof(struct wifi_info));*/
-
-	/*if(!read_wifi_info(&info, 0))*/
-	/*{*/
-		/*os_printf("wifi: failed read wifi_infi\n");*/
-	/*}*/
-	/*else*/
-	/*{*/
-		/*os_printf("wifi: wifi_info index: 0, name: %s\n", info.name);*/
-	/*}*/
-
-	/*sprintf(info.name, "vo-home");*/
-	/*sprintf(info.pass, "bmw24zq5");*/
-
-	/*// явный нолик*/
-	/*info.name[WIFI_NAME_SIZE - 1] = 0;*/
-	/*if(!write_wifi_info(&info, 0))*/
-	/*{*/
-		/*os_printf("wifi: failed save wifi settings by index: %d\n", 0);*/
-	/*}*/
+	if(!write_custom_name(&n))
+	{
+		os_printf("wifi: failed write custom_name: `%s`\n", n.data);
+	}
 }
 
-LOCAL void main_task(void *pvParameters)
+LOCAL void ICACHE_FLASH_ATTR main_task(void *pvParameters)
 {
-	scan_wifi();
+	/*scan_wifi();*/
 	while(true)
 	{
 		vTaskDelay(1000 / portTICK_RATE_MS);
@@ -150,7 +125,7 @@ void user_init(void)
 	os_timer_arm(&info_timer, 4000, true);
 
 	///@todo read about task memory
-	xTaskCreate(main_task, "main_task", 280, NULL, 4, NULL);
+	/*xTaskCreate(main_task, "main_task", 280, NULL, 4, NULL);*/
 
 	start_wifi();
 	webserver_start(handlers);
