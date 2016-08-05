@@ -8,6 +8,7 @@
 
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
+
 int http_system_info_handler(struct query *query)
 {
 	const char* ptr = query_get_header("Test", query);
@@ -51,10 +52,11 @@ int http_get_device_info_handler(struct query *query)
 		char ip_print_buffer[4 * 4 + 1] = { 0 };
 		sprintf(ip_print_buffer, IPSTR, IP2STR(&ip_info.ip));
 
-		cJSON_AddNumberToObject(json_data, "powered", info.device_type >> 7);
-		cJSON_AddNumberToObject(json_data, "type", info.device_type & 0x0F);
+		cJSON_AddNumberToObject(json_data, "powered", device_info_get_powered(&info));
+		cJSON_AddNumberToObject(json_data, "type", device_info_get_type_int(&info));
 
-		if(strnlen(name_info.data, CUSTOM_NAME_SIZE) > 0)
+		uint32_t length = strnlen(name_info.data, CUSTOM_NAME_SIZE);
+		if(length != 0 && length != CUSTOM_NAME_SIZE)
 		{
 			cJSON_AddStringToObject(json_data, "name", name_info.data);
 		}
@@ -144,12 +146,9 @@ int http_set_device_name_handler(struct query *query)
 		if(device_name_size < CUSTOM_NAME_SIZE - 1)
 		{
 			struct custom_name name;
-			memset(&name, 0xFF, sizeof(struct custom_name));
+			memset(&name, 0, sizeof(struct custom_name));
 			memcpy(name.data, device_name, device_name_size);
 
-			// явный нолик
-			name.data[CUSTOM_NAME_SIZE] = 0;
-			name.data[device_name_size] = 0;
 			if(write_custom_name(&name))
 			{
 				result = 1;

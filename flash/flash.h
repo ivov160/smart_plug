@@ -37,6 +37,27 @@ struct custom_name
 	char data[CUSTOM_NAME_SIZE];
 };
 
+/**
+ * @brief Функция для определения питания утройства
+ * @param[in] info Указатель на device_info структуру
+ * @return true - питание разеточное, false - батарейки
+ */
+bool device_info_get_powered(struct device_info* info);
+
+/**
+ * @brief Функция для получения типа устройства
+ * @param[in] info Указатель на device_info структуру
+ * @return Тип устройства в int
+ */
+uint8_t device_info_get_type_int(struct device_info* info);
+
+/**
+ * @brief Функция для получения типа устройства в строковом виде
+ * @param[in] info Указатель на device_info структуру
+ * @return Тип устройства в char
+ */
+const char* device_info_get_type(struct device_info* info);
+
 /** 
  * @brief функция для чтения имени устройства
  * Читает с flash имя устройства установленное пользователем
@@ -51,7 +72,7 @@ bool read_custom_name(struct custom_name* info);
 bool write_custom_name(struct custom_name* info);
 
 bool read_current_device(struct device_info* info);
-bool write_current_device(struct device_info* info);
+/*bool write_current_device(struct device_info* info);*/
 
 bool read_wifi_info(struct wifi_info* info, uint32_t index);
 bool write_wifi_info(struct wifi_info* info, uint32_t index);
