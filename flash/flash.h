@@ -71,8 +71,14 @@ bool read_custom_name(struct custom_name* info);
  */
 bool write_custom_name(struct custom_name* info);
 
+/**
+ * @brief Функия для чтения информации об устройсвте
+ * Информация о устройстве прошиваеться 1 раз при прошивке и не
+ * меняеться
+ * @param[in,out] info Указатель на device_info структуру
+ * @return true - все прочиталось, false - нет
+ */
 bool read_current_device(struct device_info* info);
-/*bool write_current_device(struct device_info* info);*/
 
 bool read_wifi_info(struct wifi_info* info, uint32_t index);
 bool write_wifi_info(struct wifi_info* info, uint32_t index);

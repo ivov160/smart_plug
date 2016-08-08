@@ -1,4 +1,6 @@
 #include "user_http_handlers.h"
+#include "user_power.h"
+
 #include "../flash/flash.h"
 
 #include "cJSON.h"
@@ -7,7 +9,6 @@
 #include "lwip/ip_addr.h"
 
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
-
 
 int http_system_info_handler(struct query *query)
 {
@@ -62,7 +63,7 @@ int http_get_device_info_handler(struct query *query)
 		}
 		else
 		{
-			cJSON_AddStringToObject(json_data, "name", "undefined");
+			cJSON_AddNullToObject(json_data, "name");
 		}
 
 		cJSON_AddStringToObject(json_data, "ip", ip_print_buffer);
@@ -175,4 +176,61 @@ int http_set_device_name_handler(struct query *query)
 	cJSON_Delete(json_root);
 
 	return result;
+}
+
+
+int http_on_handler(struct query *query)
+{
+	power_up();
+
+	cJSON *json_root = cJSON_CreateObject();
+	cJSON_AddBoolToObject(json_root, "success", true);
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
+	cJSON_Delete(json_root);
+
+	return 0;
+}
+
+int http_off_handler(struct query *query)
+{
+	power_down();
+
+	cJSON *json_root = cJSON_CreateObject();
+	cJSON_AddBoolToObject(json_root, "success", true);
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
+	cJSON_Delete(json_root);
+
+	return 0;
+}
+
+
+int http_status_handler(struct query *query)
+{
+	cJSON *json_root = cJSON_CreateObject();
+	cJSON_AddBoolToObject(json_root, "success", true);
+
+	cJSON *json_data = cJSON_CreateObject();
+	cJSON_AddItemToObject(json_root, "data", json_data);
+
+	cJSON_AddBoolToObject(json_data, "power", power_status() == 1);
+
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
+	cJSON_Delete(json_root);
+
+	return 0;
 }

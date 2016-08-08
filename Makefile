@@ -12,10 +12,8 @@
 #     a generated lib/image xxx.a ()
 #
 TARGET = eagle
-#FLAVOR = release
-FLAVOR = debug
-
-#EXTRA_CCFLAGS += -u
+FLAVOR = release
+#FLAVOR = debug
 
 ifndef PDIR # {
 GEN_IMAGES= eagle.app.v6.out
@@ -25,18 +23,23 @@ SUBDIRS=    	\
 	user   		\
 	driver		\
 	light_http	\
-	flash		\
-	esp-gdbstub
-
+	flash		
 endif # } PDIR
+
+ifeq ($(FLAVOR),debug)
+SUBDIRS += \
+		   esp-gdbstub
+endif
 
 LDDIR = $(SDK_PATH)/ld
 
-#CCFLAGS += -Os -std=c99
-#CCFLAGS += -std=c99
-#CCFLAGS += -std=gnu11 -g -ggdb -Og
-CCFLAGS += -std=gnu11 -Og -ggdb -DIRAM='__attribute__((section(".fast.text")))'
-#CCFLAGS += -std=gnu11 -ggdb -Og -g3 -DIRAM='__attribute__((section(".iram0.text")))'
+ifeq ($(FLAVOR),debug)
+CCFLAGS += -std=gnu11 -Og -ggdb -DNDEBUG -DIRAM='__attribute__((section(".fast.text")))'
+endif
+
+ifeq ($(FLAVOR),release)
+CCFLAGS += -std=gnu11 -Os -DIRAM='__attribute__((section(".fast.text")))'
+endif
 
 TARGET_LDFLAGS =		\
 	-nostdlib		\
@@ -57,8 +60,12 @@ COMPONENTS_eagle.app.v6 = \
 	user/libuser.a	\
 	driver/libdriver.a \
 	light_http/liblight_http.a \
-	flash/libflash.a \
+	flash/libflash.a 
+
+ifeq ($(FLAVOR),debug)
+COMPONENTS_eagle.app.v6 += \
 	esp-gdbstub/libgdbstub.a
+endif
 
 LINKFLAGS_eagle.app.v6 =    \
     -L$(SDK_PATH)/lib       \

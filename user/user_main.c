@@ -1,13 +1,17 @@
 #include "user_config.h"
 
 #include "esp_common.h"
+
+#ifdef NDEBUG
 #include "../esp-gdbstub/gdbstub.h"
+#endif
 
 #include "uart.h"
-#include "wifi_station.h"
-#include "spiffs/spiffs.h"
 
+#include "wifi_station.h"
+#include "user_power.h"
 #include "user_http_handlers.h"
+
 #include "light_http.h"
 #include "flash.h"
 
@@ -18,12 +22,15 @@ static struct http_handler_rule handlers[] =
 {	
 	{ "/getSystemInfo", http_system_info_handler },
 	{ "/getDeviceInfo", http_get_device_info_handler },
-	{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },
-	{ "/setDeviceName", http_set_device_name_handler },
+	/*{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },*/
+	/*{ "/setDeviceName", http_set_device_name_handler },*/
+	{ "/on", http_on_handler },
+	{ "/off", http_off_handler },
+	{ "/status", http_status_handler },
 	{ NULL, NULL },
 };
 
-LOCAL void ICACHE_FLASH_ATTR system_info(void *p_args)
+LOCAL void system_info(void *p_args)
 {
 	os_printf("system: SDK version:%s rom %d\r\n", system_get_sdk_version(), system_upgrade_userbin_check());
 	os_printf("system: Chip id = 0x%x\r\n", system_get_chip_id());
@@ -31,7 +38,7 @@ LOCAL void ICACHE_FLASH_ATTR system_info(void *p_args)
 	os_printf("system: Free heap size = %d\r\n", system_get_free_heap_size());
 }
 
-void ICACHE_FLASH_ATTR scan_callback(void *args, STATUS status)
+LOCAL void scan_callback(void *args, STATUS status)
 {
 	if(args != NULL)
 	{
@@ -41,29 +48,30 @@ void ICACHE_FLASH_ATTR scan_callback(void *args, STATUS status)
 		uint32_t wifi_index = 0;
 		while(bss != NULL && wifi_index < WIFI_LIST_SIZE)
 		{
-			struct wifi_info info;
-			memset(&info, 0, sizeof(struct wifi_info));
+			/*struct wifi_info info;*/
+			/*memset(&info, 0, sizeof(struct wifi_info));*/
 
-			os_printf("wifi: scaned ssid: `%s` size: %d index: %d\n", bss->ssid, bss->ssid_len, wifi_index);
+			os_printf("wifi: scaned ssid: `%s`\n", bss->ssid);
 
-			// do that because bss->ssid_len 0
-			uint8_t ssid_len = strnlen(bss->ssid, WIFI_NAME_SIZE);
-			if(ssid_len< WIFI_NAME_SIZE - 1)
-			{
-				memcpy(info.name, bss->ssid, ssid_len);
-				if(!write_wifi_info(&info, wifi_index))
-				{
-					os_printf("wifi: failed save wifi settings by index: %d\n", wifi_index);
-				}
-				else
-				{
-					++wifi_index;
-				}
-			}
-			else
-			{
-				os_printf("wifi: ssid is too long ssid: `%s`\n", bss->ssid);
-			}
+			/*if(bss->ssid_len < WIFI_NAME_SIZE - 1)*/
+			/*{*/
+				/*memcpy(info.name, bss->ssid, bss->ssid_len);*/
+				/*// явный нолик*/
+				/*info.name[WIFI_NAME_SIZE - 1] = 0;*/
+
+				/*if(!write_wifi_info(&info, wifi_index))*/
+				/*{*/
+					/*os_printf("wifi: failed save wifi settings by index: %d\n", wifi_index);*/
+				/*}*/
+				/*else*/
+				/*{*/
+					/*++wifi_index;*/
+				/*}*/
+			/*}*/
+			/*else*/
+			/*{*/
+				/*os_printf("wifi: ssid is too long ssid: `%s`\n", bss->ssid);*/
+			/*}*/
 			bss = STAILQ_NEXT(bss, next);
 		}
 		free(args);
@@ -74,39 +82,19 @@ void ICACHE_FLASH_ATTR scan_callback(void *args, STATUS status)
 	}
 }
 
-LOCAL void ICACHE_FLASH_ATTR scan_wifi()
+LOCAL void scan_wifi()
 {
-	/*struct scan_config scan;*/
-	/*while(!wifi_station_scan(&scan, scan_callback))*/
-	/*{*/
-		/*os_printf("wifi: failed start scan stations\n");*/
-		/*vTaskDelay(1000 / portTICK_RATE_MS);*/
-	/*}*/
-
-	struct custom_name n;
-	memset(&n, 0, sizeof(struct custom_name));
-	memcpy(n.data, "42", sizeof("42") - 1);
-
-	if(!write_custom_name(&n))
+	struct scan_config scan;
+	while(!wifi_station_scan(&scan, scan_callback))
 	{
-		os_printf("wifi: failed write custom_name: `%s`\n", n.data);
-	}
-
-	char* d = NULL;
-	*d = 'd';
-
-	memset(&n, 0, sizeof(struct custom_name));
-	memcpy(n.data, "33", sizeof("33") - 1);
-
-	if(!write_custom_name(&n))
-	{
-		os_printf("wifi: failed write custom_name: `%s`\n", n.data);
+		os_printf("wifi: failed start scan stations\n");
+		vTaskDelay(1000 / portTICK_RATE_MS);
 	}
 }
 
-LOCAL void ICACHE_FLASH_ATTR main_task(void *pvParameters)
+LOCAL void main_task(void *pvParameters)
 {
-	/*scan_wifi();*/
+	scan_wifi();
 	while(true)
 	{
 		vTaskDelay(1000 / portTICK_RATE_MS);
@@ -119,15 +107,25 @@ void user_init(void)
 	uart_init_new();
 	UART_SetBaudrate(UART0, BIT_RATE_115200);
 
+#ifdef NDEBUG
+	// компилируем если с отладкой
 	gdbstub_init();
+#endif
+
+	power_init();
+	power_up();
 
 	os_timer_setfn(&info_timer, system_info, NULL);
 	os_timer_arm(&info_timer, 4000, true);
 
 	///@todo read about task memory
-	/*xTaskCreate(main_task, "main_task", 280, NULL, 4, NULL);*/
+	/*xTaskCreate(main_task, "main_task", 280, NULL, MAIN_TASK_PRIO, NULL);*/
 
-	start_wifi();
+	struct device_info info;
+	memset(&info, 0, sizeof(struct device_info));
+	read_current_device(&info);
+
+	start_wifi(&info);
 	webserver_start(handlers);
 }
 

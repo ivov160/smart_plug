@@ -10,4 +10,8 @@ int http_get_wifi_info_list_handler(struct query *query);
 
 int http_set_device_name_handler(struct query *query);
 
+int http_on_handler(struct query *query);
+int http_off_handler(struct query *query);
+int http_status_handler(struct query *query);
+
 #endif

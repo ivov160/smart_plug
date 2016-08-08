@@ -5,7 +5,6 @@
 #define ALIGNED_SIZE(size) ((size + (FLASH_UNIT_SIZE - 1)) & -FLASH_UNIT_SIZE) + FLASH_UNIT_SIZE
 
 LOCAL uint32_t read_write_flash(uint32_t addr, void* data, uint32_t size, bool operation, bool xor);
-/*LOCAL uint32_t erase_flash(uint32_t addr, uint32_t size);*/
 
 LOCAL void set_wifi_info_list_size(uint32_t count);
 
@@ -62,16 +61,7 @@ bool write_custom_name(struct custom_name* info)
 	bool result = false;
 	if(info != NULL)
 	{
-		/*result = erase_flash(FLASH_BASE_ADDR + layout_info.custom_name_offset, sizeof(struct custom_name)) == SPI_FLASH_RESULT_OK;*/
-		/*if(!result)*/
-		/*{*/
-			/*os_printf("spi: failed erase addr: 0x%x\n", FLASH_BASE_ADDR + layout_info.custom_name_offset);*/
-		/*}*/
-
-		/*if(result)*/
-		/*{*/
-			result = read_write_flash(FLASH_BASE_ADDR + layout_info.custom_name_offset, (void *) info, sizeof(struct custom_name), false, true) == SPI_FLASH_RESULT_OK;
-		/*}*/
+		result = read_write_flash(FLASH_BASE_ADDR + layout_info.custom_name_offset, (void *) info, sizeof(struct custom_name), false, true) == SPI_FLASH_RESULT_OK;
 	}
 	else
 	{
@@ -109,20 +99,6 @@ bool read_current_device(struct device_info* info)
 	}
 	return result;
 }
-
-/*bool write_current_device(struct device_info* info)*/
-/*{*/
-	/*bool result = false;*/
-	/*if(info != NULL)*/
-	/*{*/
-		/*result = read_write_flash(FLASH_BASE_ADDR + layout_info.current_device_offset, (void*) info, sizeof(struct device_info), false, true) == SPI_FLASH_RESULT_OK;*/
-	/*}*/
-	/*else*/
-	/*{*/
-		/*os_printf("flash: current device_info is NULL\n");*/
-	/*}*/
-	/*return result;*/
-/*}*/
 
 bool read_wifi_info(struct wifi_info* info, uint32_t index)
 {
@@ -204,27 +180,23 @@ LOCAL uint32_t read_write_flash(uint32_t addr, void* data, uint32_t size, bool o
 		uint32_t aligned_addr = addr & (-FLASH_UNIT_SIZE);
 		/*uint32_t aligned_size = ((size + (FLASH_UNIT_SIZE - 1)) & -FLASH_UNIT_SIZE) + FLASH_UNIT_SIZE;*/
 
-		// size allocated in bytes, but used pointer on 4 bytes 
-		uint32_t* buffer = (uint32_t*)zalloc(size);
 		if(operation)
 		{
-			result = spi_flash_read(aligned_addr, buffer, size);
+			result = spi_flash_read(aligned_addr, data, size);
 
-			uint32_t* target = (uint32_t*) data;
 			if(xor)
 			{
+				uint32_t* pointer = (uint32_t*) data;
 				for(uint32_t i = 0; i < size / FLASH_UNIT_SIZE; ++i)
 				{	
-					target[i] = buffer[i] ^ 0XFFFFFFFF;
+					pointer[i] = pointer[i] ^ 0XFFFFFFFF;
 				}
-			}
-			else
-			{
-				memcpy(target, buffer, size);
 			}
 		}
 		else
 		{
+			// size allocated in bytes, but used pointer on 4 bytes 
+			uint32_t* buffer = (uint32_t*)zalloc(size);
 			uint32_t* source = (uint32_t*) data;
 			if(xor)
 			{
@@ -239,8 +211,8 @@ LOCAL uint32_t read_write_flash(uint32_t addr, void* data, uint32_t size, bool o
 			}
 
 			result = spi_flash_write(aligned_addr, buffer, size);
+			free(buffer);
 		}
-		free(buffer);
 	
 		if(result != SPI_FLASH_RESULT_OK)
 		{
@@ -254,44 +226,3 @@ LOCAL uint32_t read_write_flash(uint32_t addr, void* data, uint32_t size, bool o
 	return result;
 }
 
-/*LOCAL uint32_t erase_flash(uint32_t addr, uint32_t size)*/
-/*{*/
-	/*uint32_t result = SPI_FLASH_RESULT_ERR;*/
-
-	/*[>uint32_t buffer = 0XFFFFFFFF;<]*/
-	/*[>uint32_t buffer = 0X00003333;<]*/
-	/*[>uint32_t buffer = 0X33333333;<]*/
-	/*[>uint32_t buffer = 0XCCCCCCCC;<]*/
-	/*[>uint32_t buffer = 0X03030303;<]*/
-	/*[>uint32_t buffer = 0X11111111;<]*/
-	/*[>uint32_t buffer = 0X00000000;<]*/
-	/*[>uint32_t* buffer = (uint32_t*)malloc(size);<]*/
-	/*[>memset(buffer, 0XFFFFFFFF, size);<]*/
-	/*[>memset(buffer, 0, size);<]*/
-	/*result = spi_flash_erase_sector(110592);*/
-
-	/*[>uint32_t buffer = 0XCCCCAAAA;<]*/
-	/*[>uint32_t buffer = 0X33333333;<]*/
-	/*[>result = spi_flash_write(addr, &buffer, sizeof(buffer));<]*/
-	/*[>result = read_write_flash(addr, (void*) &buffer, sizeof(uint32_t), false, false);<]*/
-
-	/*[>uint32_t* buffer = (uint32_t*)zalloc(size);<]*/
-	/*[>if(result != SPI_FLASH_RESULT_OK)<]*/
-	/*[>{<]*/
-		/*[>os_printf("spi: failed read old value\n");<]*/
-	/*[>}<]*/
-
-	/*[>//проверка на FF<]*/
-	/*[>if(buffer[0] != 0)<]*/
-	/*[>{<]*/
-		/*[>if(result == SPI_FLASH_RESULT_OK)<]*/
-		/*[>{<]*/
-			/*[>result = read_write_flash(addr, (void*) buffer, size, false, false);<]*/
-			/*[>if(result != SPI_FLASH_RESULT_OK)<]*/
-			/*[>{<]*/
-				/*[>os_printf("spi: failed write xored value\n");<]*/
-			/*[>}<]*/
-		/*[>}<]*/
-	/*[>}<]*/
-	/*return result;*/
-/*}*/

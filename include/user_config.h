@@ -1,6 +1,8 @@
 #ifndef __USER_CONFIG_H__
 #define __USER_CONFIG_H__
 
+#include "esp_common.h"
+
 // gdb config
 #define GDBSTUB_FREERTOS 1
 //#define GDBSTUB_USE_OWN_STACK 1
@@ -13,6 +15,16 @@
 
 // for develop 1 connection
 #define CONNECTION_POOL_SIZE 1
+
+// prio for task working with connection
+#define WEB_CONNECTION_PRIO tskIDLE_PRIORITY + 1
+
+// prio for task handle request
+#define WEB_HANLDERS_PRIO tskIDLE_PRIORITY + 2
+
+// prio for main task
+#define MAIN_TASK_PRIO tskIDLE_PRIORITY
+
 
 #ifdef __GNUC__
 #define NORETURN __attribute__((noreturn))
