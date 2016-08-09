@@ -2,9 +2,9 @@
 
 #include "gpio.h"
 
-#define POWER_GPIO 12
-#define POWER_GPIO_MUX PERIPHS_IO_MUX_MTDI_U
-#define POWER_GPIO_FUNC FUNC_GPIO12
+#define POWER_GPIO 14
+#define POWER_GPIO_MUX PERIPHS_IO_MUX_MTMS_U
+#define POWER_GPIO_FUNC FUNC_GPIO14
 
 void power_init()
 {
