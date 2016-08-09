@@ -29,6 +29,9 @@
 extern "C" {
 #endif
 
+#define ETS_GPIO_INTR_ENABLE()  _xt_isr_unmask(1 << ETS_GPIO_INUM)
+#define ETS_GPIO_INTR_DISABLE() _xt_isr_mask(1 << ETS_GPIO_INUM)
+
 #define GPIO_Pin_0              (BIT(0))  /* Pin 0 selected */
 #define GPIO_Pin_1              (BIT(1))  /* Pin 1 selected */
 #define GPIO_Pin_2              (BIT(2))  /* Pin 2 selected */
@@ -143,6 +146,25 @@ typedef struct {
   */
 #define GPIO_OUTPUT_SET(gpio_no, bit_value) \
     gpio_output_conf(bit_value<<gpio_no, ((~bit_value)&0x01)<<gpio_no, 1<<gpio_no, 0)
+
+/**
+  * @brief	Get GPIO interrupt status
+  *
+  * @param  gpio_no   : The GPIO sequence number.
+  *
+  * @return	GPIO interrupt status
+  */
+#define GPIO_INTERRUPT_STATUS(gpio_no) \
+	gpio_pin_intr_status_get() & BIT(GPIO_ID_PIN(gpio_no))
+
+/**
+  * @brief	Reset GPIO interrupt state
+  *
+  * @return	null
+  */
+#define GPIO_INTERRUPT_RESET_STATUS(gpio_no) \
+	gpio_pin_intr_status_set(gpio_no, false)
+
 
 /**  
   * @brief   Set GPIO pin output level.
@@ -282,6 +304,21 @@ void gpio_pin_wakeup_disable();
   * @return  null
   */
 void gpio_pin_intr_state_set(uint32 i, GPIO_INT_TYPE intr_state);
+
+/**
+  * @brief	Get interrupt state
+  *
+  * @return	interrupt state
+  */
+uint32_t gpio_pin_intr_status_get();
+
+/**
+  * @brief	Set interrupt state of gpio
+  *
+  * @param	uint32_t i : GPIO pin number
+  * @param	bool state : GPIO interrupt state
+  */
+void gpio_pin_intr_status_set(uint32_t i, bool state);
 
 /**  
   * @brief   Sample the value of GPIO input pins and returns a bitmask.

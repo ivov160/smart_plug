@@ -133,7 +133,8 @@ void gpio_pin_wakeup_enable(uint32 i, GPIO_INT_TYPE intr_state)
 {
     uint32 pin_reg;
 
-    if ((intr_state == GPIO_PIN_INTR_LOLEVEL) || (intr_state == GPIO_PIN_INTR_HILEVEL)) {
+	// хз почему такие ограничения
+    /*if ((intr_state == GPIO_PIN_INTR_LOLEVEL) || (intr_state == GPIO_PIN_INTR_HILEVEL)) {*/
         portENTER_CRITICAL();
 
         pin_reg = GPIO_REG_READ(GPIO_PIN_ADDR(i));
@@ -143,7 +144,7 @@ void gpio_pin_wakeup_enable(uint32 i, GPIO_INT_TYPE intr_state)
         GPIO_REG_WRITE(GPIO_PIN_ADDR(i), pin_reg);
 
         portEXIT_CRITICAL();
-    }
+    /*}*/
 }
 
 void gpio_pin_wakeup_disable(void)
@@ -210,4 +211,27 @@ void gpio16_input_conf(void)
 uint8 gpio16_input_get(void)
 {
     return (uint8)(READ_PERI_REG(RTC_GPIO_IN_DATA) & 1);
+}
+
+uint32_t gpio_pin_intr_status_get()
+{
+	return GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+}
+
+void gpio_pin_intr_status_set(uint32_t i, bool state)
+{
+    portENTER_CRITICAL();
+
+	uint32_t status = gpio_pin_intr_status_get();
+	if(state)
+	{
+		status |= 1 << BIT(GPIO_ID_PIN(i));
+	}
+	else
+	{
+		status &= GPIO_STATUS_INTERRUPT ^ (1 << BIT(GPIO_ID_PIN(i)));
+	}
+	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
+
+	portEXIT_CRITICAL();
 }
