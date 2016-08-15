@@ -24,12 +24,13 @@ SUBDIRS=    	\
 	driver		\
 	light_http	\
 	flash		
-endif # } PDIR
 
 ifeq ($(FLAVOR),debug)
 SUBDIRS += \
 		   esp-gdbstub
 endif
+
+endif # } PDIR
 
 LDDIR = $(SDK_PATH)/ld
 

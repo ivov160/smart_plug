@@ -102,8 +102,12 @@ LOCAL void main_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+
 void user_init(void)
 {
+	/*uint32_t start_time = system_get_rtc_time();*/
+	uint32_t start_time = system_get_time();
+
 	uart_init_new();
 	UART_SetBaudrate(UART0, BIT_RATE_115200);
 
@@ -118,8 +122,28 @@ void user_init(void)
 	os_timer_setfn(&info_timer, system_info, NULL);
 	os_timer_arm(&info_timer, 4000, true);
 
+	init_layout();
+
 	///@todo read about task memory
-	/*xTaskCreate(main_task, "main_task", 280, NULL, MAIN_TASK_PRIO, NULL);*/
+	xTaskCreate(main_task, "main_task", 280, NULL, MAIN_TASK_PRIO, NULL);
+
+
+	/*struct custom_name name_info;*/
+	/*memset(&name_info, 0, sizeof(struct custom_name));*/
+	/*sprintf(name_info.data, "TEST NAME SUKA");*/
+
+	/*if(!write_custom_name(&name_info))*/
+	/*{*/
+		/*os_printf("test: can't write custom_name\n");*/
+	/*}*/
+
+	/*if(spi_flash_erase_sector(FLASH_BASE_ADDR / SPI_FLASH_SEC_SIZE) != SPI_FLASH_RESULT_OK)*/
+	/*{*/
+		/*os_printf("test: failed erase sector 108\n");*/
+	/*}*/
+
+	/*char* d = NULL;*/
+	/**d = '\0';*/
 
 	struct device_info info;
 	memset(&info, 0, sizeof(struct device_info));
@@ -127,5 +151,11 @@ void user_init(void)
 
 	start_wifi(&info);
 	webserver_start(handlers);
+
+
+	/*uint32_t end_time = system_get_rtc_time();*/
+	uint32_t end_time = system_get_time();
+	/*os_printf("time: system up by: %umks\n", (end_time - start_time)*system_rtc_clock_cali_proc());*/
+	os_printf("time: system up by: %umks\n", (end_time - start_time));
 }
 
