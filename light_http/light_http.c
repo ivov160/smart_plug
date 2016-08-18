@@ -986,7 +986,7 @@ void webserver_start(struct http_handler_rule *user_handlers)
     if(webserver_task_stop != NULL && socket_queue != NULL)
 	{	///@todo read about task memory
         xTaskCreate(webserver_task, "webserver", 280, NULL, WEB_CONNECTION_PRIO, NULL); //512, 376 left,136 used
-		xTaskCreate(webserver_client_task, "webserver_client", 280, NULL, WEB_HANLDERS_PRIO, NULL);
+		xTaskCreate(webserver_client_task, "webserver_client", WEB_HANLDERS_STACK_SIZE, NULL, WEB_HANLDERS_PRIO, NULL);
 	}
 }
 

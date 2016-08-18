@@ -67,8 +67,16 @@ void flash_hal_destroy(flash_t handle);
  */
 flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, uint32_t size, struct flash_sectors_range* range);
 
+/**
+ * @brief Функция для получения доступного размера под данные в area
+ *
+ */
 uint32_t flash_hal_get_data_size(flash_t handle);
 
+/**
+ * @brief Функция для получения реального размера area
+ *
+ */
 uint32_t flash_hal_get_real_size(flash_t handle);
 
 /**
@@ -77,9 +85,29 @@ uint32_t flash_hal_get_real_size(flash_t handle);
  */
 flash_code flash_hal_check_crc(flash_t handle);
 
+/**
+ * @brief Функция для подсчета и записи crc для area
+ *
+ */
+flash_code flash_hal_check_crc(flash_t handle);
+
+/**
+ * @brief Функция для чтения данных с flash
+ */
 flash_code flash_hal_read(flash_t handle, uint32_t offset, void* data, uint32_t size);
+
+/**
+ * @brief Функция для записи данных на flash
+ */
 flash_code flash_hal_write(flash_t handle, uint32_t offset, void* data, uint32_t size);
-flash_code flash_hal_erase(flash_t handle, uint32_t offset, void* data, uint32_t size);
+
+/**
+ * @brief Функция для стирания данных с flash
+ *
+ * @note По сути это write с 0xFFFFFFFF
+ *
+ */
+flash_code flash_hal_erase(flash_t handle, uint32_t offset, uint32_t size);
 
 
 

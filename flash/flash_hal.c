@@ -10,12 +10,8 @@
 #endif
 
 #define FLASH_CRC_SIZE sizeof(uint32_t)
-#define FLASH_SECTOR_DATA_SIZE (FLASH_SEGMENT_SIZE - FLASH_CRC_SIZE)
+#define FLASH_SECTOR_DATA_SIZE (FLASH_SEGMENT_SIZE - FLASH_CRC_SIZE - FLASH_CRC_SIZE)
 #define FLASH_BUFFER_SECTORS (FLASH_BUFFER_SIZE / FLASH_SEGMENT_SIZE)
-
-/*uint32_t FLASH_CRC_SIZE = sizeof(uint32_t);*/
-/*uint32_t FLASH_SECTOR_DATA_SIZE = FLASH_SEGMENT_SIZE - FLASH_CRC_SIZE;*/
-/*uint32_t FLASH_BUFFER_SECTORS = (FLASH_BUFFER_SIZE) / FLASH_SEGMENT_SIZE;*/
 
 struct _flash
 {
@@ -24,6 +20,8 @@ struct _flash
 	uint32_t data_size;
 	uint32_t real_size;
 };
+
+LOCAL flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* data, uint32_t size, bool write);
 
 uint32_t crc32(uint32_t crc, const uint8_t *data, uint32_t size)
 {
@@ -35,7 +33,7 @@ uint32_t crc32(uint32_t crc, const uint8_t *data, uint32_t size)
 	  return 0;
   }
 
-  uint32_t crcu32 = ~crcu32; 
+  uint32_t crcu32 = ~crc;
   while (size-- > 0) 
   { 
 	  uint8_t b = *data++; 
@@ -86,6 +84,20 @@ flash_code flash_hal_check_sector_crc(uint8_t *data, uint32_t size, uint32_t crc
 		}
 	}
 	return code;
+}
+
+LOCAL uint32_t flash_hal_calc_sector_crc(uint8_t *data, uint32_t size)
+{
+	uint32_t crc = 0;
+	if(data != NULL && size != 0)
+	{
+		crc = crc32(0, data, size);
+	}
+	else
+	{
+		os_printf("flash: calc sector crc failed, data or size is null\n");
+	}
+	return crc;
 }
 
 uint32_t flash_hal_get_data_size(flash_t handle)
@@ -167,6 +179,16 @@ flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, uint32_t
 
 flash_code flash_hal_read(flash_t handle, uint32_t offset, void* data, uint32_t size)
 {
+	return flash_hal_read_write(handle, offset, data, size, false);
+}
+
+flash_code flash_hal_write(flash_t handle, uint32_t offset, void* data, uint32_t size)
+{
+	return flash_hal_read_write(handle, offset, data, size, true);
+}
+
+LOCAL flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* data, uint32_t size, bool write)
+{
 	flash_code code = handle != NULL ? flash_hal_check_crc(handle) : FLASH_INVALID_HANDLE;
 	if(code == FLASH_OK)
 	{
@@ -175,24 +197,25 @@ flash_code flash_hal_read(flash_t handle, uint32_t offset, void* data, uint32_t 
 		{
 			uint8_t* buffer = (uint8_t*)malloc(FLASH_BUFFER_SIZE);
 
-			uint32_t total_read_size = 0;
+			uint32_t total_size = 0;
 			uint32_t sector = range.first_index;
 			uint32_t sectors_left = range.count;
 
 			while(sectors_left > 0)
-			{
-				// сколько читать секторов
+			{	 // сколько читать секторов
 				uint32_t sectors_read = sectors_left < FLASH_BUFFER_SECTORS ? sectors_left : FLASH_BUFFER_SECTORS;
 				uint32_t aligned_addr = (handle->addr + sector * FLASH_SEGMENT_SIZE) & (-FLASH_UNIT_SIZE);
-				uint32_t total_size = sectors_read * FLASH_SEGMENT_SIZE;
+				uint32_t read_size = sectors_read * FLASH_SEGMENT_SIZE;
 
-				os_printf("flash: base addr: 0x%x, addr: 0x%x, current sector: %d, need read sectors: %d, size: %d\n", handle->addr, aligned_addr, sector, sectors_read, total_size);
+				os_printf("flash: base addr: 0x%x, addr: 0x%x, current sector: %d, need read sectors: %d, size: %d\n", handle->addr, aligned_addr, sector, sectors_read, read_size);
 
 				memset(buffer, 0, FLASH_BUFFER_SIZE);
-				if((code = (spi_flash_read(
+				code = (spi_flash_read(
 						aligned_addr, 
 						(uint32_t*)buffer, 
-						total_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK)) != FLASH_OK)
+						read_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK);
+
+				if(code != FLASH_OK)
 				{	// не удалось прочитать flash
 					break;
 				}
@@ -200,15 +223,19 @@ flash_code flash_hal_read(flash_t handle, uint32_t offset, void* data, uint32_t 
 				// работаем с буфером как с секторами
 				for(uint32_t j = 0; j < sectors_read; ++j)
 				{
-					uint32_t sector_begin_offset = j * FLASH_SEGMENT_SIZE;
-					uint32_t sector_end_offset = j * FLASH_SEGMENT_SIZE + FLASH_SEGMENT_SIZE - 1;
+					int32_t sector_begin_offset = j * FLASH_SEGMENT_SIZE;
+					// -1 для конвертации длинны в индекс
+					uint32_t sector_end_offset = sector_begin_offset + FLASH_SEGMENT_SIZE - 1;
+					// crc сектора записанно в предпоследнем элементе сегмента (FLASH_SEGMENT_SIZE)A
+					// в последнем элементе сектора записанн crc area, если сегмент крайний в area, иначе записываеться 0xFFFFFFFF
+					uint32_t sector_crc_offset = sector_end_offset - FLASH_CRC_SIZE;
 
 					// забрасываем сеетор для подсчета crc
 					// подпровляем оффсет для crc если бы buffer был uint32_t*
 					if((code = flash_hal_check_sector_crc(
 									buffer + sector_begin_offset, 
 									FLASH_SECTOR_DATA_SIZE, 
-									((uint32_t*)buffer)[sector_end_offset / sizeof(uint32_t)])))
+									((uint32_t*)buffer)[sector_crc_offset / sizeof(uint32_t)])))
 					{
 						break;
 					}
@@ -227,48 +254,80 @@ flash_code flash_hal_read(flash_t handle, uint32_t offset, void* data, uint32_t 
 					}
 					else
 					{
-						data_sector_size = size - total_read_size < FLASH_SECTOR_DATA_SIZE
-							? size - total_read_size
+						data_sector_size = size - total_size < FLASH_SECTOR_DATA_SIZE
+							? size - total_size
 							: FLASH_SECTOR_DATA_SIZE;
 					}
 					uint32_t buffer_offset = sector_begin_offset + data_sector_offset;
 
-					// копирование данных из буфера на ружу
-					memcpy((uint8_t*) data + (total_read_size / FLASH_UNIT_SIZE), buffer + buffer_offset, data_sector_size);
-					total_read_size += data_sector_size;
+					if(write)
+					{	// копирование данных в буфер и 
+						memcpy(buffer + buffer_offset, (uint8_t*) data + total_size, data_sector_size);
+						// подсчет crc для новых данных
+						((uint32_t*)buffer)[sector_crc_offset / sizeof(uint32_t)] = 
+							flash_hal_calc_sector_crc(buffer + sector_begin_offset, FLASH_SECTOR_DATA_SIZE);
+
+						// sector + j потому, что sector начало + j текущий сектор в буфере
+						// стираем сразу т.к. всеравно по секторно
+						uint32_t flash_sector_addr = handle->addr + (sector + j *  FLASH_SEGMENT_SIZE);
+
+						code = (spi_flash_erase_sector(flash_sector_addr / FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK 
+										? FLASH_SPI_ERROR 
+										: FLASH_OK);
+
+						if(code != FLASH_OK)
+						{	// не удалось стересть сектор на flash
+							break;
+						}
+					}
+					else
+					{	// копирование данных из буфера на ружу
+						memcpy((uint8_t*) data + total_size, buffer + buffer_offset, data_sector_size);
+					}
+
+					total_size += data_sector_size;
 				}
 
-				// выход из цикла чтения, что-то не так 
+				// выход из цикла, что-то не так 
 				// при копировании данных
 				if(code != FLASH_OK)
 				{
 					break;
 				}
+
+				if(write)
+				{
+					code = (spi_flash_write(
+							aligned_addr, 
+							(uint32_t*)buffer, 
+							read_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK);
+
+					if(code != FLASH_OK)
+					{	// не удалось записать buffer на flash
+						break;
+					}
+				}
+
 				// следующий сектор для чтения
 				sector += sectors_read;
 				sectors_left -= sectors_read;
 			}
-
 			free(buffer);
+
+			///@todo добавить crc для area
 		}
 	}
 	return code;
 }
 
-flash_code flash_hal_write(flash_t handle, uint32_t offset, void* data, uint32_t size)
+flash_code flash_hal_erase(flash_t handle, uint32_t offset, uint32_t size)
 {
 	flash_code code = handle != NULL ? FLASH_OK : FLASH_INVALID_HANDLE;
 	if(code == FLASH_OK)
 	{
-	}
-	return code;
-}
-
-flash_code flash_hal_erase(flash_t handle, uint32_t offset, void* data, uint32_t size)
-{
-	flash_code code = handle != NULL ? FLASH_OK : FLASH_INVALID_HANDLE;
-	if(code == FLASH_OK)
-	{
+		uint8_t* data = (uint8_t*) malloc(size);
+		memset(data, 0xFF, size);
+		code = flash_hal_write(handle, offset, (void*) data, size);
 	}
 	return code;
 }
@@ -276,8 +335,53 @@ flash_code flash_hal_erase(flash_t handle, uint32_t offset, void* data, uint32_t
 flash_code flash_hal_check_crc(flash_t handle)
 {
 	flash_code code = handle != NULL ? FLASH_OK : FLASH_INVALID_HANDLE;
-	/*if(code == FLASH_OK)*/
-	/*{*/
-	/*}*/
+	if(code == FLASH_OK)
+	{
+		uint32_t area_crc = 0;
+
+		uint8_t* buffer = (uint8_t*)malloc(FLASH_BUFFER_SIZE);
+		uint32_t sector = 0;
+		uint32_t sectors_left = handle->sectors;
+
+		while(sectors_left > 0)
+		{	 // сколько читать секторов
+			uint32_t sectors_read = sectors_left < FLASH_BUFFER_SECTORS ? sectors_left : FLASH_BUFFER_SECTORS;
+			uint32_t aligned_addr = (handle->addr + sector * FLASH_SEGMENT_SIZE) & (-FLASH_UNIT_SIZE);
+			uint32_t read_size = sectors_read * FLASH_SEGMENT_SIZE;
+
+			os_printf("flash: base addr: 0x%x, addr: 0x%x, current sector: %d, need read sectors: %d, size: %d\n", handle->addr, aligned_addr, sector, sectors_read, read_size);
+
+			memset(buffer, 0, FLASH_BUFFER_SIZE);
+			code = (spi_flash_read(
+					aligned_addr, 
+					(uint32_t*)buffer, 
+					read_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK);
+
+			if(code != FLASH_OK)
+			{	// не удалось прочитать flash
+				break;
+			}
+
+			uint32_t* flash_segment = (uint32_t*) buffer;
+			// работаем с буфером как с секторами
+			for(uint32_t j = 0; j < sectors_read; ++j)
+			{
+				int32_t sector_begin_offset = j * FLASH_SEGMENT_SIZE;
+				// -1 для конвертации длинны в индекс
+				uint32_t sector_end_offset = sector_begin_offset + FLASH_SEGMENT_SIZE - 1;
+				// crc сектора записанно в предпоследнем элементе сегмента (FLASH_SEGMENT_SIZE)A
+				// в последнем элементе сектора записанн crc area, если сегмент крайний в area, иначе записываеться 0xFFFFFFFF
+				uint32_t sector_crc_offset = sector_end_offset - FLASH_CRC_SIZE;
+
+				// подсчет crc для area по crc секторов
+				area_crc = crc32(area_crc, buffer + sector_crc_offset, sizeof(uint32_t));
+			}
+
+			// следующий сектор для чтения
+			sector += sectors_read;
+			sectors_left -= sectors_read;
+		}
+		free(buffer);
+	}
 	return code;
 }

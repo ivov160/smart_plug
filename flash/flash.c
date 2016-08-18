@@ -84,30 +84,38 @@ void destroy_layout()
 
 bool read_custom_name(struct custom_name* info)
 {
-	bool result = false;
+	flash_code result = FLASH_OK;
 	if(info != NULL)
 	{
-		result = read_write_flash(FLASH_BASE_ADDR + layout_info.custom_name_offset, info->data, CUSTOM_NAME_SIZE, true) == SPI_FLASH_RESULT_OK;
+		result = flash_hal_read(main_area, layout_info.custom_name_offset, (void*) info, CUSTOM_NAME_SIZE);
+		if(result != FLASH_OK)
+		{
+			os_printf("flash: failed read custom_name, result: %d\n", result);
+		}
 	}
 	else
 	{
 		os_printf("flash: custom_name is NULL\n");
 	}
-	return result;
+	return result == FLASH_OK;
 }
 
 bool write_custom_name(struct custom_name* info)
 {
-	bool result = false;
+	flash_code result = FLASH_OK;
 	if(info != NULL)
 	{
-		result = read_write_flash(FLASH_BASE_ADDR + layout_info.custom_name_offset, (void *) info, sizeof(struct custom_name), false) == SPI_FLASH_RESULT_OK;
+		result = flash_hal_write(main_area, layout_info.custom_name_offset, (void*) info, sizeof(struct custom_name));
+		if(result != FLASH_OK)
+		{
+			os_printf("flash: failed write custom_name, result: %d\n", result);
+		}
 	}
 	else
 	{
 		os_printf("flash: custom_name is NULL\n");
 	}
-	return result;
+	return result == FLASH_OK;
 }
 
 bool device_info_get_powered(struct device_info* info)

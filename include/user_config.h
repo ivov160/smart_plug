@@ -22,6 +22,9 @@
 // prio for task handle request
 #define WEB_HANLDERS_PRIO tskIDLE_PRIORITY + 2
 
+// stack size for web handlers stack in words
+#define WEB_HANLDERS_STACK_SIZE (SEND_BUF_SIZE + RECV_BUF_SIZE + 2 * 1024) / 4
+
 // prio for main task
 #define MAIN_TASK_PRIO tskIDLE_PRIORITY
 

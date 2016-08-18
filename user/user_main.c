@@ -23,7 +23,7 @@ static struct http_handler_rule handlers[] =
 	{ "/getSystemInfo", http_system_info_handler },
 	{ "/getDeviceInfo", http_get_device_info_handler },
 	/*{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },*/
-	/*{ "/setDeviceName", http_set_device_name_handler },*/
+	{ "/setDeviceName", http_set_device_name_handler },
 	{ "/on", http_on_handler },
 	{ "/off", http_off_handler },
 	{ "/status", http_status_handler },
@@ -125,8 +125,7 @@ void user_init(void)
 	init_layout();
 
 	///@todo read about task memory
-	xTaskCreate(main_task, "main_task", 280, NULL, MAIN_TASK_PRIO, NULL);
-
+	/*xTaskCreate(main_task, "main_task", 280, NULL, MAIN_TASK_PRIO, NULL);*/
 
 	/*struct custom_name name_info;*/
 	/*memset(&name_info, 0, sizeof(struct custom_name));*/
@@ -137,17 +136,20 @@ void user_init(void)
 		/*os_printf("test: can't write custom_name\n");*/
 	/*}*/
 
+	/*char* d = NULL;*/
+	/**d = '\0';*/
+
 	/*if(spi_flash_erase_sector(FLASH_BASE_ADDR / SPI_FLASH_SEC_SIZE) != SPI_FLASH_RESULT_OK)*/
 	/*{*/
 		/*os_printf("test: failed erase sector 108\n");*/
 	/*}*/
 
-	/*char* d = NULL;*/
-	/**d = '\0';*/
-
 	struct device_info info;
 	memset(&info, 0, sizeof(struct device_info));
-	read_current_device(&info);
+	if(!read_current_device(&info))
+	{
+		os_printf("user: failed get current device_info\n");
+	}
 
 	start_wifi(&info);
 	webserver_start(handlers);

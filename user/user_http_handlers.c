@@ -165,15 +165,21 @@ int http_set_device_name_handler(struct query *query)
 		os_printf("http: empty new device name\n");
 	}
 
+	os_printf("http: json render before\n");
 	cJSON *json_root = cJSON_CreateObject();
 	cJSON_AddBoolToObject(json_root, "success", (result ? true : false));
 	char* data = cJSON_Print(json_root);
+	os_printf("http: json render after\n");
 
+	os_printf("http: response before\n");
 	query_response_status(200, query);
 	query_response_header("Content-Type", "application/json", query);
 	query_response_body(data, strlen(data), query);
+	os_printf("http: response after\n");
 
+	os_printf("http: json delete before\n");
 	cJSON_Delete(json_root);
+	os_printf("http: json delete after\n");
 
 	return result;
 }
