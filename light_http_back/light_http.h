@@ -134,6 +134,16 @@ void query_response_header(const char* name, const char* value, struct query* qu
 void query_response_body(const char* data, int32_t length, struct query* query);
 
 /**
+ * @brief Функция помечает запрос как обработанный
+ *
+ * Если запрос помечен как обработанный, то происходит
+ * автоматическая отправка данных клиенты и закрытие соеденения
+ *
+ * @param[in] query Указатель на запрос
+ */
+void query_done(struct query* query);
+
+/**
  * @brief Метод для запуска сервера
  * @param handlers Список обработчиков
  */

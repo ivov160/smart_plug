@@ -33,7 +33,8 @@ typedef enum {
 	FLASH_OUT_OR_RANGE = 2,
 	FLASH_CHECKSUM_MISMATCH = 3,
 	FLASH_SPI_ERROR = 4,
-	FLASH_INVALID_ADDR = 5
+	FLASH_INVALID_ADDR = 5,
+	FLASH_INVALID_POINTER = 6
 } flash_code;
 
 /**
@@ -62,12 +63,6 @@ flash_t flash_hal_init(uint32_t offset, uint32_t size);
 void flash_hal_destroy(flash_t handle);
 
 /**
- * @brief Функция для вычисления диапазона секторов для данного объема памяти
- *
- */
-flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, uint32_t size, struct flash_sectors_range* range);
-
-/**
  * @brief Функция для получения доступного размера под данные в area
  *
  */
@@ -81,12 +76,6 @@ uint32_t flash_hal_get_real_size(flash_t handle);
 
 /**
  * @brief Функция для проверки целостности блока flash
- *
- */
-flash_code flash_hal_check_crc(flash_t handle);
-
-/**
- * @brief Функция для подсчета и записи crc для area
  *
  */
 flash_code flash_hal_check_crc(flash_t handle);

@@ -1,5 +1,6 @@
 #include "user_http_handlers.h"
 #include "user_power.h"
+#include "wifi_station.h"
 
 #include "../flash/flash.h"
 
@@ -9,6 +10,55 @@
 #include "lwip/ip_addr.h"
 
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
+
+static struct query* ptr = NULL;
+
+static void http_scan_callback(void *args, STATUS status)
+{
+	cJSON *json_root = cJSON_CreateObject();
+	if(status == OK)
+	{
+		if(args != NULL)
+		{
+			cJSON_AddBoolToObject(json_root, "success", true);
+			cJSON *json_data = cJSON_CreateArray();
+
+			struct bss_info* bss_list = (struct bss_info*) args;
+			struct bss_info *bss = bss_list;
+
+			while(bss != NULL)
+			{
+				os_printf("wifi: scaned ssid: `%s`\n", bss->ssid);
+				cJSON *json_value = cJSON_CreateString(bss->ssid);
+				cJSON_AddItemToArray(json_data, json_value);
+				bss = STAILQ_NEXT(bss, next);
+			}
+			/*free(args);*/
+			cJSON_AddItemToObject(json_root, "data", json_data);
+		}
+		else
+		{
+			os_printf("wifi: scan results arg is NULL\n");
+			cJSON_AddBoolToObject(json_root, "success", false);
+		}
+	}
+	else
+	{
+		cJSON_AddBoolToObject(json_root, "success", false);
+	}
+
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, ptr);
+	query_response_header("Content-Type", "application/json", ptr);
+	query_response_body(data, strlen(data), ptr);
+
+	cJSON_Delete(json_root);
+	free(data);
+
+	query_done(ptr);
+	ptr = NULL;
+}
 
 int http_system_info_handler(struct query *query)
 {
@@ -108,7 +158,27 @@ int http_get_wifi_info_list_handler(struct query *query)
 
 		os_printf("http: ssid: `%s`\n", info.name);
 
-		cJSON *json_value = cJSON_CreateString(info.name);
+		cJSON *json_value = cJSON_CreateObject();
+		cJSON_AddStringToObject(json_value, "name", info.name);
+		cJSON_AddStringToObject(json_value, "pass", info.pass);
+
+		char ip_print_buffer[4 * 4 + 1] = { 0 };
+		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.ip));
+		cJSON_AddStringToObject(json_value, "ip", ip_print_buffer);
+
+		memset(ip_print_buffer, 0, sizeof(ip_print_buffer));
+		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.mask));
+		cJSON_AddStringToObject(json_value, "netmask", ip_print_buffer);
+
+		memset(ip_print_buffer, 0, sizeof(ip_print_buffer));
+		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.gw));
+		cJSON_AddStringToObject(json_value, "gw", ip_print_buffer);
+
+		memset(ip_print_buffer, 0, sizeof(ip_print_buffer));
+		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.dns));
+		cJSON_AddStringToObject(json_value, "dns", ip_print_buffer);
+
+		/*cJSON *json_value = cJSON_CreateString(info.name);*/
 		cJSON_AddItemToArray(json_data, json_value);
 	}
 	
@@ -131,6 +201,36 @@ int http_get_wifi_info_list_handler(struct query *query)
 	free(data);
 	cJSON_Delete(json_root);
 
+	return 1;
+}
+
+int http_scan_wifi_info_list_handler(struct query *query)
+{
+	int result = 0;
+	if(ptr != NULL)
+	{
+		result = 1;
+
+		cJSON *json_root = cJSON_CreateObject();
+		cJSON_AddBoolToObject(json_root, "success", false);
+		char* data = cJSON_Print(json_root);
+
+		query_response_status(200, query);
+		query_response_header("Content-Type", "application/json", query);
+		query_response_body(data, strlen(data), query);
+
+		cJSON_Delete(json_root);
+		free(data);
+	}
+	else
+	{
+		ptr = query;
+		if(!wifi_station_scan(NULL, http_scan_callback))
+		{
+			os_printf("http: failed start wifi scan\n");
+		}
+		result = 0;
+	}
 	return result;
 }
 
@@ -165,25 +265,142 @@ int http_set_device_name_handler(struct query *query)
 		os_printf("http: empty new device name\n");
 	}
 
-	os_printf("http: json render before\n");
 	cJSON *json_root = cJSON_CreateObject();
 	cJSON_AddBoolToObject(json_root, "success", (result ? true : false));
 	char* data = cJSON_Print(json_root);
-	os_printf("http: json render after\n");
 
-	os_printf("http: response before\n");
 	query_response_status(200, query);
 	query_response_header("Content-Type", "application/json", query);
 	query_response_body(data, strlen(data), query);
-	os_printf("http: response after\n");
 
-	os_printf("http: json delete before\n");
 	cJSON_Delete(json_root);
-	os_printf("http: json delete after\n");
+	free(data);
 
-	return result;
+	return 1;
 }
 
+int http_set_main_wifi_handler(struct query *query)
+{
+	int result = 0;
+
+	struct wifi_info main_wifi;
+	memset(&main_wifi, 0, sizeof(struct wifi_info));
+
+	const char* param = query_get_param("name", query, REQUEST_POST);
+	if(param != NULL && strnlen(param, WIFI_NAME_SIZE) < WIFI_NAME_SIZE)
+	{
+		memcpy(main_wifi.name, param, strnlen(param, WIFI_NAME_SIZE));
+		param = query_get_param("pass", query, REQUEST_POST);
+		if(param != NULL && strnlen(param, WIFI_PASS_SIZE) < WIFI_PASS_SIZE)
+		{
+			memcpy(main_wifi.pass, param, strnlen(param, WIFI_PASS_SIZE));
+			param = query_get_param("ip", query, REQUEST_POST);
+			if(param != NULL && strncmp(param, "dhcp", sizeof("dhcp") - 1) != 0)
+			{	// not dhcp
+				main_wifi.ip = ipaddr_addr(param);
+				if(main_wifi.ip != 0)
+				{
+					param = query_get_param("mask", query, REQUEST_POST);
+					if(param != NULL)
+					{
+						main_wifi.mask = ipaddr_addr(param);
+						if(main_wifi.mask != 0)
+						{
+							param = query_get_param("gw", query, REQUEST_POST);
+							if(param != NULL)
+							{
+								main_wifi.gw = ipaddr_addr(param);
+								if(main_wifi.gw != 0)
+								{
+									param = query_get_param("dns", query, REQUEST_POST);
+									if(param != NULL)
+									{
+										main_wifi.dns = ipaddr_addr(param);
+										if(main_wifi.dns != 0)
+										{	// finish point
+											result = 1;
+										}
+										else
+										{
+											os_printf("http: wifi dns invalid string\n");
+										}
+									}
+									else
+									{
+										os_printf("http: wifi dns is not setted\n");
+									}
+								}
+								else
+								{
+									os_printf("http: wifi gw invalid string\n");
+								}
+							}
+							else
+							{
+								os_printf("http: wifi gw is not setted\n");
+							}
+						}
+						else
+						{
+							os_printf("http: wifi mask invalid string\n");
+						}
+					}
+					else
+					{
+						os_printf("http: wifi mask is not setted\n");
+					}
+				}
+				else
+				{
+					os_printf("http: wifi ip invalid string\n");
+				}
+			}
+			else if(param == NULL)
+			{
+				os_printf("http: wifi ip is not setted\n");
+			}
+			else
+			{	// ip dhcp
+				result = true;
+			}
+		}
+		else
+		{
+			os_printf("http: wifi pass is not setted\n");
+		}
+	}
+	else
+	{
+		os_printf("http: wifi name is not setted\n");
+	}
+
+	if(result)
+	{
+		/*if(!set_station_info(&main_wifi))*/
+		if(!write_main_wifi(&main_wifi))
+		{
+			result = false;
+			os_printf("http: failed set station info\n");
+		}
+		/*else*/
+		/*{*/
+			/*stop_wifi();*/
+		/*}*/
+	}
+
+	cJSON *json_root = cJSON_CreateObject();
+	cJSON_AddBoolToObject(json_root, "success", (result ? true : false));
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
+	cJSON_Delete(json_root);
+	free(data);
+
+	return 1;
+}
 
 int http_on_handler(struct query *query)
 {
@@ -198,8 +415,9 @@ int http_on_handler(struct query *query)
 	query_response_body(data, strlen(data), query);
 
 	cJSON_Delete(json_root);
+	free(data);
 
-	return 0;
+	return 1;
 }
 
 int http_off_handler(struct query *query)
@@ -215,10 +433,10 @@ int http_off_handler(struct query *query)
 	query_response_body(data, strlen(data), query);
 
 	cJSON_Delete(json_root);
+	free(data);
 
-	return 0;
+	return 1;
 }
-
 
 int http_status_handler(struct query *query)
 {
@@ -237,6 +455,8 @@ int http_status_handler(struct query *query)
 	query_response_body(data, strlen(data), query);
 
 	cJSON_Delete(json_root);
+	free(data);
 
-	return 0;
+	return 1;
 }
+

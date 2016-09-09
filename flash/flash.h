@@ -7,8 +7,8 @@
 #define DEVICE_LIST_SIZE 32
 
 #define CUSTOM_NAME_SIZE 64
-#define WIFI_NAME_SIZE 256
-#define WIFI_PASS_SIZE 128
+#define WIFI_NAME_SIZE 32
+#define WIFI_PASS_SIZE 64
 
 #define FLASH_BASE_ADDR 0x6C000
 #define FLASH_SIZE 0xC000
@@ -89,6 +89,10 @@ bool read_current_device(struct device_info* info);
 bool read_wifi_info(struct wifi_info* info, uint32_t index);
 bool write_wifi_info(struct wifi_info* info, uint32_t index);
 uint32_t get_wifi_info_list_size();
+
+bool read_main_wifi(struct wifi_info* info);
+bool write_main_wifi(struct wifi_info* info);
+bool erase_main_wifi();
 
 /*bool erase_wifi_info(uint32_t index);*/
 /*bool exist_wifi_info(uint32_t index);*/
