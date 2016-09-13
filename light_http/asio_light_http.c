@@ -92,6 +92,9 @@ struct query
 {
 	REQUEST_METHOD method;						///< Тип запроса
 
+	void* user_data;							///< указатель на пользовательские данные
+	response_done_callback after_response;		///< указатель на функцию пост обработки
+
 	char* uri;									///< uri
 	uint32_t uri_length;						///< длинная uri
 	
@@ -259,6 +262,15 @@ void query_done(struct query* query)
 	}
 }
 
+void query_register_after_response(struct query* query, response_done_callback callback, void* user_data)
+{
+	if(query != NULL)
+	{
+		query->after_response = callback;
+		query->user_data = user_data;
+	}
+}
+
 
 static err_t asio_http_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err);
 static err_t asio_http_poll(void *arg, struct tcp_pcb *pcb);
@@ -273,6 +285,8 @@ static struct query* init_query()
 	query->uri_length = 0;
 
 	query->done = false;
+	query->user_data = NULL;
+	query->after_response = NULL;
 
 	query->body = NULL;
 	query->body_length = 0;
@@ -407,6 +421,10 @@ static err_t http_close_conn(struct tcp_pcb *pcb, struct http_ctx* ctx)
 	}
 	else if(ctx != NULL) 
 	{
+		if(ctx->query->after_response != NULL)
+		{
+			ctx->query->after_response(ctx->query, ctx->query->user_data);
+		}
 		free_ctx(ctx);
 	}
 	return err;
@@ -741,6 +759,7 @@ static uint32_t http_send_data(struct http_ctx* ctx)
 	os_printf("http_send_data: pcb=%p hs=%p size=%d left=%d offset=%d\n", 
 			(void*)ctx->pcb, (void*)ctx, ctx->query->response_body_length, left_data, ctx->query->response_body_offset);
 
+	/*uint32_t buffer_size = tcp_sndbuf(ctx->pcb) > left_data ? left_data : buffer_size;*/
 	uint32_t buffer_size = tcp_sndbuf(ctx->pcb);
 
 	err_t code = tcp_write(ctx->pcb, (const void*)(ctx->query->response_body + ctx->query->response_body_offset), buffer_size, 0);

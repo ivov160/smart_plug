@@ -11,7 +11,28 @@
 
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
+static os_timer_t wifi_connect_timer;
 static struct query* ptr = NULL;
+
+static void wifi_connect_callback(void *p_args)
+{
+	struct wifi_info* info = (struct wifi_info*) p_args;
+	if(!start_station_wifi(info, true))
+	{
+		os_printf("http: failed reconect to new wifi station\n");
+	}
+	free(info);
+}
+
+static void wifi_reconnect_callback(struct query* query, void* data)
+{
+	struct wifi_info* info = (struct wifi_info*) data;
+	if(!start_station_wifi(info, true))
+	{
+		os_printf("http: failed reconect to new wifi station\n");
+	}
+	free(info);
+}
 
 static void http_scan_callback(void *args, STATUS status)
 {
@@ -95,7 +116,7 @@ int http_get_device_info_handler(struct query *query)
 
 	cJSON *json_root = cJSON_CreateObject();
 
-	if(read_custom_name(&name_info) && read_current_device(&info) && wifi_get_ip_info(SOFTAP_IF, &ip_info))
+	if(read_custom_name(&name_info) && read_current_device(&info) && get_wifi_ip_info(&ip_info))
 	{
 		cJSON *json_data = cJSON_CreateObject();
 		cJSON_AddItemToObject(json_root, "data", json_data);
@@ -283,40 +304,39 @@ int http_set_main_wifi_handler(struct query *query)
 {
 	int result = 0;
 
-	struct wifi_info main_wifi;
-	memset(&main_wifi, 0, sizeof(struct wifi_info));
+	struct wifi_info* main_wifi = (struct wifi_info*) zalloc(sizeof(struct wifi_info));
 
 	const char* param = query_get_param("name", query, REQUEST_POST);
 	if(param != NULL && strnlen(param, WIFI_NAME_SIZE) < WIFI_NAME_SIZE)
 	{
-		memcpy(main_wifi.name, param, strnlen(param, WIFI_NAME_SIZE));
+		memcpy(main_wifi->name, param, strnlen(param, WIFI_NAME_SIZE));
 		param = query_get_param("pass", query, REQUEST_POST);
 		if(param != NULL && strnlen(param, WIFI_PASS_SIZE) < WIFI_PASS_SIZE)
 		{
-			memcpy(main_wifi.pass, param, strnlen(param, WIFI_PASS_SIZE));
+			memcpy(main_wifi->pass, param, strnlen(param, WIFI_PASS_SIZE));
 			param = query_get_param("ip", query, REQUEST_POST);
 			if(param != NULL && strncmp(param, "dhcp", sizeof("dhcp") - 1) != 0)
 			{	// not dhcp
-				main_wifi.ip = ipaddr_addr(param);
-				if(main_wifi.ip != 0)
+				main_wifi->ip = ipaddr_addr(param);
+				if(main_wifi->ip != 0)
 				{
 					param = query_get_param("mask", query, REQUEST_POST);
 					if(param != NULL)
 					{
-						main_wifi.mask = ipaddr_addr(param);
-						if(main_wifi.mask != 0)
+						main_wifi->mask = ipaddr_addr(param);
+						if(main_wifi->mask != 0)
 						{
 							param = query_get_param("gw", query, REQUEST_POST);
 							if(param != NULL)
 							{
-								main_wifi.gw = ipaddr_addr(param);
-								if(main_wifi.gw != 0)
+								main_wifi->gw = ipaddr_addr(param);
+								if(main_wifi->gw != 0)
 								{
 									param = query_get_param("dns", query, REQUEST_POST);
 									if(param != NULL)
 									{
-										main_wifi.dns = ipaddr_addr(param);
-										if(main_wifi.dns != 0)
+										main_wifi->dns = ipaddr_addr(param);
+										if(main_wifi->dns != 0)
 										{	// finish point
 											result = 1;
 										}
@@ -376,20 +396,52 @@ int http_set_main_wifi_handler(struct query *query)
 
 	if(result)
 	{
-		/*if(!set_station_info(&main_wifi))*/
-		if(!write_main_wifi(&main_wifi))
+		if(!write_main_wifi(main_wifi))
 		{
 			result = false;
 			os_printf("http: failed set station info\n");
 		}
-		/*else*/
-		/*{*/
-			/*stop_wifi();*/
-		/*}*/
 	}
 
 	cJSON *json_root = cJSON_CreateObject();
 	cJSON_AddBoolToObject(json_root, "success", (result ? true : false));
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
+	cJSON_Delete(json_root);
+	free(data);
+
+	if(result)
+	{
+		query_register_after_response(query, wifi_reconnect_callback, (void*) main_wifi);
+		/*os_timer_setfn(&wifi_connect_timer, wifi_connect_callback, main_wifi);*/
+		/*os_timer_arm(&wifi_connect_timer, 500, false);*/
+	}
+
+	return 1;
+}
+
+int http_get_wifi_error_handler(struct query *query)
+{
+	cJSON *json_root = cJSON_CreateObject();
+
+	const char* error = wifi_get_last_error();
+	if(error != NULL)
+	{
+		cJSON *json_data = cJSON_CreateObject();
+		cJSON_AddStringToObject(json_data, "error", error);
+
+		cJSON_AddItemToObject(json_root, "data", json_data);
+		cJSON_AddBoolToObject(json_root, "success", true);
+	}
+	else
+	{
+		cJSON_AddBoolToObject(json_root, "success", false);
+	}
+
 	char* data = cJSON_Print(json_root);
 
 	query_response_status(200, query);

@@ -12,7 +12,6 @@
 #include "user_power.h"
 #include "user_http_handlers.h"
 
-/*#include "light_http.h"*/
 #include "asio_light_http.h"
 #include "flash.h"
 
@@ -26,7 +25,8 @@ static struct http_handler_rule handlers[] =
 	/*{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },*/
 	{ "/getBroadcastNetworks", http_scan_wifi_info_list_handler },
 	{ "/setDeviceName", http_set_device_name_handler },
-	{ "/setWifi", http_set_main_wifi_handler},
+	{ "/setWifi", http_set_main_wifi_handler },
+	{ "/getWifiError", http_get_wifi_error_handler },
 	{ "/on", http_on_handler },
 	{ "/off", http_off_handler },
 	{ "/status", http_status_handler },
@@ -61,25 +61,26 @@ void user_init(void)
 
 	init_layout();
 
-	struct device_info info;
-	memset(&info, 0, sizeof(struct device_info));
-	if(!read_current_device(&info))
-	{
-		os_printf("user: failed get current device_info\n");
-	}
-
 	struct wifi_info main_wifi;
+	memset(&main_wifi, 0, sizeof(struct wifi_info));
 	if(!read_main_wifi(&main_wifi))
 	{
 		os_printf("user: failed get main_wifi\n");
 	}
 
-	if(strnlen(main_wifi.name, WIFI_NAME_SIZE) < WIFI_NAME_SIZE)
+	uint32_t name_length = strnlen(main_wifi.name, WIFI_NAME_SIZE);
+	if(name_length != 0 && name_length < WIFI_NAME_SIZE)
 	{
-		start_station_wifi(&main_wifi);
+		start_station_wifi(&main_wifi, false);
 	}
 	else
 	{
+		struct device_info info;
+		memset(&info, 0, sizeof(struct device_info));
+		if(!read_current_device(&info))
+		{
+			os_printf("user: failed get current device_info\n");
+		}
 		start_ap_wifi(&info);
 	}
 	asio_webserver_start(handlers);

@@ -66,6 +66,11 @@ struct query;
 typedef int (* cgi_handler)(struct query *query);
 
 /**
+ * @brief Сигнатура callback вызываемого перед разрушением query
+ */
+typedef void (* response_done_callback)(struct query *query, void* user_data);
+
+/**
  * @brief Правило обработки урла
  */
 struct http_handler_rule
@@ -143,6 +148,12 @@ void query_response_body(const char* data, int32_t length, struct query* query);
  */
 void query_done(struct query* query);
 
+/**
+ * @brief Функция регистрирует постобработку
+ * @param[in] query Указатель на запрос
+ * @param[in] user_data Указатель на пользовательские данные
+ */
+void query_register_after_response(struct query* query, response_done_callback callback, void* user_data);
 
 /**
  * @brief Метод для запуска сервера

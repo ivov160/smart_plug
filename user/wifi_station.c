@@ -15,13 +15,55 @@
 #define PASSWORD_LENGTH 8
 #define MAX_SSID_LENGTH 32
 
-#define WIFI_EVENT_HANDLER_STACK_SIZE 512
+#define WIFI_EVENT_HANDLER_STACK_SIZE 128
 #define WIFI_EVENT_HANDLER_PRIO DEFAULT_TASK_PRIO 
 #define WIFI_EVENT_WAIT_TIMER 10000
 #define WIFI_EVENT_POOL_SIZE 10
 
+#define WIFI_STATION_CHECK_TIMER 5000
+
+static const char* reasons[] = 
+{
+	"good",
+    "REASON_UNSPECIFIED",
+    "REASON_AUTH_EXPIRE",
+    "REASON_AUTH_LEAVE",
+    "REASON_ASSOC_EXPIRE",
+    "REASON_ASSOC_TOOMANY",
+    "REASON_NOT_AUTHED",
+    "REASON_NOT_ASSOCED",
+    "REASON_ASSOC_LEAVE",
+    "REASON_ASSOC_NOT_AUTHED",
+    "REASON_DISASSOC_PWRCAP_BAD",
+    "REASON_DISASSOC_SUPCHAN_BAD",
+	"SKIP",
+    "REASON_IE_INVALID",
+    "REASON_MIC_FAILURE",
+    "REASON_4WAY_HANDSHAKE_TIMEOUT",
+    "REASON_GROUP_KEY_UPDATE_TIMEOUT",
+    "REASON_IE_IN_4WAY_DIFFERS",
+    "REASON_GROUP_CIPHER_INVALID",
+    "REASON_PAIRWISE_CIPHER_INVALID",
+    "REASON_AKMP_INVALID",
+    "REASON_UNSUPP_RSN_IE_VERSION",
+    "REASON_INVALID_RSN_IE_CAP",
+    "REASON_802_1X_AUTH_FAILED",
+    "REASON_CIPHER_SUITE_REJECTED",
+
+    "REASON_BEACON_TIMEOUT",
+    "REASON_NO_AP_FOUND",
+    "REASON_AUTH_FAIL",
+    "REASON_ASSOC_FAIL",
+    "REASON_HANDSHAKE_TIMEOUT",
+};
+
 static xQueueHandle wifi_event_handler_stop = NULL;
 static xQueueHandle wifi_event_queue = NULL;
+
+static WIFI_MODE current_mode = NULL_MODE;
+static os_timer_t check_station_timer;
+
+static uint8_t last_error = 0;
 
 static char int_to_hex[] = "0123456789ABCDEF";
 
@@ -47,6 +89,23 @@ static void wifi_event_handler(System_Event_t *event)
 	{
 		os_printf("wifif: wifi_event_queue is null\n");
 	}
+}
+
+static void wifi_check_station_state()
+{
+	if(wifi_get_opmode() == STATION_MODE)
+	{
+		if(last_error != 0)
+		{
+			os_printf("wifi: failed station connect, error detected\n");
+
+			if(!wifi_set_opmode_current(STATIONAP_MODE))
+			{
+				os_printf("wifif: failed restore ap mode\n");
+			}
+		}
+	}
+	os_timer_disarm(&check_station_timer);
 }
 
 ///@todo заменить на что либо, или реализовать в 1 месте
@@ -101,10 +160,13 @@ static void wifi_event_handler_task(void *pvParameters)
 
 					case EVENT_STAMODE_CONNECTED:
 						os_printf("wifi: event EVENT_STAMODE_CONNECTED\n");
+						/*event->event_info.sta_connected.*/
 					break;
 
 					case EVENT_STAMODE_DISCONNECTED:
 						os_printf("wifi: event EVENT_STAMODE_DISCONNECTED\n");
+						os_printf("wifi: disconnected from: %s, reason: %d\n", event->event_info.disconnected.ssid, event->event_info.disconnected.reason);
+						last_error = event->event_info.disconnected.reason;
 					break;
 
 					case EVENT_STAMODE_AUTHMODE_CHANGE:
@@ -113,6 +175,7 @@ static void wifi_event_handler_task(void *pvParameters)
 
 					case EVENT_STAMODE_GOT_IP:
 						os_printf("wifi: event EVENT_STAMODE_GOT_IP\n");
+						/*event->event_info.got_ip.*/
 					break;
 
 					case EVENT_STAMODE_DHCP_TIMEOUT:
@@ -201,16 +264,16 @@ static void generate_password(char* password, uint32_t size)
 }
 
 
-bool start_station_wifi(struct wifi_info* info)
+bool start_station_wifi(struct wifi_info* info, bool connect)
 {
 	wifi_event_task_start();
-	return set_station_info(info);
+	return set_station_info_2(info, connect);
 }
 
 bool start_ap_wifi(struct device_info* info)
 {
 	bool result = true;
-	/*wifi_event_task_start();*/
+	wifi_event_task_start();
 	if(info != NULL)
 	{
 		struct softap_config ap_config;
@@ -268,23 +331,6 @@ bool start_ap_wifi(struct device_info* info)
 	return result;
 }
 
-void start_wifi(struct device_info* info)
-{
-	/*bool success = false;*/
-	/*for(uint32_t station_tries = 0; station_tries < 5; ++station_tries)*/
-	/*{*/
-		/*if(start_station_wifi())*/
-		/*{*/
-			/*success = true;*/
-			/*break;*/
-		/*}*/
-	/*}*/
-	/*if(!success)*/
-	/*{*/
-		/*start_ap_wifi(info);*/
-	/*}*/
-}
-
 void stop_wifi(bool cleanup)
 {
 	if(cleanup)
@@ -319,12 +365,97 @@ void stop_wifi(bool cleanup)
 	}
 }
 
+bool set_station_info_2(struct wifi_info* info, bool connect)
+{
+	bool result = true;
+	if(info != NULL)
+	{
+		struct station_config config;
+		memset(&config, 0, sizeof(struct station_config));
+
+		config.bssid_set = 0;
+		memcpy(config.ssid, info->name, strnlen(info->name, WIFI_NAME_SIZE));
+		memcpy(config.password, info->pass, strnlen(info->pass, WIFI_PASS_SIZE));
+
+		os_printf("wifi: name: `%s`, pass: `%s` \n", config.ssid, config.password);
+
+		if(!wifi_set_opmode_current(STATION_MODE))
+		{
+			os_printf("wifi: failed set opmode\n");
+			result = false;
+		}
+
+		if(result && !wifi_station_set_config_current(&config))
+		{
+			os_printf("wifi: failed set station config\n");
+			result = false;
+		}
+
+		if(result && connect)
+		{
+			wifi_station_disconnect();
+			if(!wifi_station_connect())
+			{
+				os_printf("wifi: failed station connect\n");
+				result = false;
+			}
+			else if(info->ip == 0)
+			{
+				if(!wifi_station_dhcpc_start())
+				{
+					os_printf("wifi: failed start dhcpc\n");
+					result = false;
+				}
+			}
+			/*else if(info->ip != 0)*/
+			/*{*/
+				/*if(wifi_station_dhcpc_status() != DHCP_STOPPED)*/
+				/*{*/
+					/*if(!wifi_station_dhcpc_stop())*/
+					/*{*/
+						/*os_printf("wifi: failed stop dhcpc\n");*/
+						/*result = false;*/
+					/*}*/
+				/*}*/
+
+				/*if(result)*/
+				/*{*/
+					/*struct ip_info ip_info;*/
+					/*ip_info.ip.addr = info->ip;*/
+					/*ip_info.gw.addr = info->gw;*/
+					/*ip_info.netmask.addr = info->mask;*/
+
+					/*if(!wifi_set_ip_info(STATION_IF, &ip_info))*/
+					/*{*/
+						/*os_printf("wifi: failed set ip info\n");*/
+						/*result = false;*/
+					/*}*/
+				/*}*/
+			/*}*/
+		}
+
+		if(result)
+		{ // завод таймера для проверки соеденения
+			last_error = 0;
+			os_timer_setfn(&check_station_timer, wifi_check_station_state, NULL);
+			os_timer_arm(&check_station_timer, WIFI_STATION_CHECK_TIMER, false);
+		}
+	}
+	else
+	{
+		os_printf("wifi: info is NULL\n");
+		result = false;
+	}
+	return result;
+}
+
 bool set_station_info(struct wifi_info* info)
 {
 	bool result = false;
 	if(info != NULL)
 	{
 		os_printf("wifi: connect to station: %s\n", info->name);
+
 
 		struct station_config config;
 		config.bssid_set = 0;
@@ -381,6 +512,13 @@ bool set_station_info(struct wifi_info* info)
 				os_printf("wifi: failed connection to station\n");
 				scope_result = false;
 			}
+			/*if(scope_result && !wifi_station_set_auto_connect(true))*/
+			/*{*/
+				/*os_printf("wifi: failed set auto connect\n");*/
+				/*scope_result = false;*/
+			/*}*/
+
+			os_printf("wifi: connection state: %d\n", (uint32_t)wifi_station_get_connect_status());
 			result = true & scope_result;
 		}
 		else
@@ -393,4 +531,20 @@ bool set_station_info(struct wifi_info* info)
 		os_printf("wifi: wifi_info is NULL\n");
 	}
 	return result;
+}
+
+const char* wifi_get_last_error()
+{
+	uint8_t index = last_error;
+	if(index >= 200)
+	{
+		index -= 175;
+	}
+	return index != 0 ? reasons[index] : NULL;
+}
+
+bool get_wifi_ip_info(struct ip_info* ip_info)
+{
+	WIFI_INTERFACE i = wifi_get_opmode() == STATION_MODE ?  STATION_IF : SOFTAP_IF;
+	return wifi_get_ip_info(i, ip_info);
 }
