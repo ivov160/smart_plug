@@ -63,6 +63,7 @@ static xQueueHandle wifi_event_queue = NULL;
 static WIFI_MODE current_mode = NULL_MODE;
 static os_timer_t check_station_timer;
 
+char target_ssid[MAX_SSID_LENGTH] = { 0 };
 static uint8_t last_error = 0;
 
 static char int_to_hex[] = "0123456789ABCDEF";
@@ -160,13 +161,19 @@ static void wifi_event_handler_task(void *pvParameters)
 
 					case EVENT_STAMODE_CONNECTED:
 						os_printf("wifi: event EVENT_STAMODE_CONNECTED\n");
-						/*event->event_info.sta_connected.*/
+
+						last_error = 0;
+						memset(target_ssid, 0, MAX_SSID_LENGTH);
+						memcpy(target_ssid, event->event_info.connected.ssid, strlen(event->event_info.connected.ssid));
 					break;
 
 					case EVENT_STAMODE_DISCONNECTED:
 						os_printf("wifi: event EVENT_STAMODE_DISCONNECTED\n");
 						os_printf("wifi: disconnected from: %s, reason: %d\n", event->event_info.disconnected.ssid, event->event_info.disconnected.reason);
-						last_error = event->event_info.disconnected.reason;
+						if(strnlen(target_ssid, MAX_SSID_LENGTH) > 0 && strncmp(target_ssid, event->event_info.disconnected.ssid, MAX_SSID_LENGTH) == 0)
+						{
+							last_error = event->event_info.disconnected.reason;
+						}
 					break;
 
 					case EVENT_STAMODE_AUTHMODE_CHANGE:
@@ -175,7 +182,6 @@ static void wifi_event_handler_task(void *pvParameters)
 
 					case EVENT_STAMODE_GOT_IP:
 						os_printf("wifi: event EVENT_STAMODE_GOT_IP\n");
-						/*event->event_info.got_ip.*/
 					break;
 
 					case EVENT_STAMODE_DHCP_TIMEOUT:
@@ -437,6 +443,9 @@ bool set_station_info_2(struct wifi_info* info, bool connect)
 		if(result)
 		{ // завод таймера для проверки соеденения
 			last_error = 0;
+			memset(target_ssid, 0, MAX_SSID_LENGTH);
+			memcpy(target_ssid, config.ssid, strlen(config.ssid));
+
 			os_timer_setfn(&check_station_timer, wifi_check_station_state, NULL);
 			os_timer_arm(&check_station_timer, WIFI_STATION_CHECK_TIMER, false);
 		}

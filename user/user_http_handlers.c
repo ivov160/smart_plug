@@ -83,18 +83,21 @@ static void http_scan_callback(void *args, STATUS status)
 
 int http_system_info_handler(struct query *query)
 {
-	const char* ptr = query_get_header("Test", query);
-	os_printf("user_handler: header test: %s\n", (ptr != NULL ? ptr : "HZ"));
 	query_response_status(200, query);
 
 	query_response_header("Content-Type", "application/json", query);
 
 	cJSON *json_root = cJSON_CreateObject();
-	cJSON_AddStringToObject(json_root, "action", "test");
-	cJSON_AddStringToObject(json_root, "sdk_version", system_get_sdk_version());
-	cJSON_AddNumberToObject(json_root, "chip_id", system_get_chip_id());
-	cJSON_AddNumberToObject(json_root, "cpu", system_get_cpu_freq());
-	cJSON_AddNumberToObject(json_root, "heap_size", system_get_free_heap_size());
+	cJSON_AddBoolToObject(json_root, "success", true);
+
+	cJSON *json_data = cJSON_CreateObject();
+	cJSON_AddItemToObject(json_root, "data", json_data);
+
+	cJSON_AddStringToObject(json_data, "action", "test");
+	cJSON_AddStringToObject(json_data, "sdk_version", system_get_sdk_version());
+	cJSON_AddNumberToObject(json_data, "chip_id", system_get_chip_id());
+	cJSON_AddNumberToObject(json_data, "cpu", system_get_cpu_freq());
+	cJSON_AddNumberToObject(json_data, "heap_size", system_get_free_heap_size());
 
 	char* data = cJSON_Print(json_root);
 	query_response_body(data, strlen(data), query);
@@ -143,74 +146,6 @@ int http_get_device_info_handler(struct query *query)
 	else
 	{
 		cJSON_AddBoolToObject(json_root, "success", false);
-	}
-
-	char* data = cJSON_Print(json_root);
-
-	query_response_status(200, query);
-	query_response_header("Content-Type", "application/json", query);
-	query_response_body(data, strlen(data), query);
-
-	free(data);
-	cJSON_Delete(json_root);
-
-	return 1;
-}
-
-int http_get_wifi_info_list_handler(struct query *query)
-{
-	int result = 0;
-	cJSON *json_root = cJSON_CreateObject();
-	cJSON *json_data = cJSON_CreateArray();
-
-	uint32_t count = get_wifi_info_list_size();
-	os_printf("http: wifi_list size: %d\n", count);
-
-	for(uint32_t i = 0; i < count; ++i, ++result)
-	{
-		struct wifi_info info;
-		memset(&info, 0, sizeof(struct wifi_info));
-
-		if(!read_wifi_info(&info, i))
-		{
-			result = 0;
-			break;
-		}
-
-		os_printf("http: ssid: `%s`\n", info.name);
-
-		cJSON *json_value = cJSON_CreateObject();
-		cJSON_AddStringToObject(json_value, "name", info.name);
-		cJSON_AddStringToObject(json_value, "pass", info.pass);
-
-		char ip_print_buffer[4 * 4 + 1] = { 0 };
-		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.ip));
-		cJSON_AddStringToObject(json_value, "ip", ip_print_buffer);
-
-		memset(ip_print_buffer, 0, sizeof(ip_print_buffer));
-		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.mask));
-		cJSON_AddStringToObject(json_value, "netmask", ip_print_buffer);
-
-		memset(ip_print_buffer, 0, sizeof(ip_print_buffer));
-		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.gw));
-		cJSON_AddStringToObject(json_value, "gw", ip_print_buffer);
-
-		memset(ip_print_buffer, 0, sizeof(ip_print_buffer));
-		sprintf(ip_print_buffer, IPSTR, IP2STR(&info.dns));
-		cJSON_AddStringToObject(json_value, "dns", ip_print_buffer);
-
-		/*cJSON *json_value = cJSON_CreateString(info.name);*/
-		cJSON_AddItemToArray(json_data, json_value);
-	}
-	
-	cJSON_AddBoolToObject(json_root, "success", (result ? true : false));
-	if(result)
-	{	// добавление данных к объекту, json_data удалиться вместе с корневым оюъектом
-		cJSON_AddItemToObject(json_root, "data", json_data);
-	}
-	else
-	{	// все плохо удаляем data, так как не прицепилось
-		cJSON_Delete(json_data);
 	}
 
 	char* data = cJSON_Print(json_root);

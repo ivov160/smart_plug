@@ -45,7 +45,7 @@
 
 /** The poll delay is X*500ms */
 #ifndef HTTPD_POLL_INTERVAL
-	#define HTTPD_POLL_INTERVAL 4
+	#define HTTPD_POLL_INTERVAL 1
 #endif
 
 /**
@@ -550,6 +550,8 @@ static void webserver_make_param(struct query_pair* pair, char* iter)
 		pair->name = iter;
 		pair->value = (ptr + 1);
 	}
+
+	os_printf("webserver: name: `%s`, value: `%s`\n", pair->name, pair->value);
 }
 
 static bool webserver_parse_params(struct http_ctx* ctx, REQUEST_METHOD m, char* data)
@@ -578,7 +580,7 @@ static bool webserver_parse_params(struct http_ctx* ctx, REQUEST_METHOD m, char*
 	// empty data, or wrong format
 	if(params_counter == 0)
 	{
-		return false;
+		return true;
 	}
 
 	if(m == REQUEST_GET)
@@ -616,11 +618,11 @@ static bool webserver_parse_params(struct http_ctx* ctx, REQUEST_METHOD m, char*
 		++iter;
 	}
 
-	// not found & token but data not empty
-	if(params_counter == 0)
-	{
+	/*// not found & token but data not empty*/
+	/*if(params_counter == 0)*/
+	/*{*/
 		webserver_make_param(target[params_counter], last);
-	}
+	/*}*/
 
 	for(struct query_pair** iter = target; *iter != NULL; ++iter)
 	{
@@ -690,9 +692,9 @@ static bool webserver_parse_request(struct http_ctx* ctx)
 	}
 
 	// parse uri args
-	iter = strstr(ctx->query->uri, "?");
-	if(iter != NULL)
+	if((iter = strstr(ctx->query->uri, "?")) != NULL)
 	{	// remove params from uri
+		os_printf("webserver: try parse get %p, %p\n", iter, ctx->query->uri + ctx->query->uri_length);
 		*iter = '\0'; ++iter;
 		if(!webserver_parse_params(ctx, REQUEST_GET, iter))
 		{
@@ -759,8 +761,10 @@ static uint32_t http_send_data(struct http_ctx* ctx)
 	os_printf("http_send_data: pcb=%p hs=%p size=%d left=%d offset=%d\n", 
 			(void*)ctx->pcb, (void*)ctx, ctx->query->response_body_length, left_data, ctx->query->response_body_offset);
 
-	/*uint32_t buffer_size = tcp_sndbuf(ctx->pcb) > left_data ? left_data : buffer_size;*/
-	uint32_t buffer_size = tcp_sndbuf(ctx->pcb);
+	uint32_t buffer_size = tcp_sndbuf(ctx->pcb) > left_data ? left_data : buffer_size;
+	/*uint32_t buffer_size = tcp_sndbuf(ctx->pcb);*/
+
+	os_printf("http_send_data: snd_buff: %d, buff_selected: %d, delta: %d\n", tcp_sndbuf(ctx->pcb), buffer_size, tcp_sndbuf(ctx->pcb) - buffer_size);
 
 	err_t code = tcp_write(ctx->pcb, (const void*)(ctx->query->response_body + ctx->query->response_body_offset), buffer_size, 0);
 	if(code == ERR_OK)
@@ -1040,16 +1044,6 @@ static void webserver_client_task(void *pvParameters)
 			{
 				http_perform_request(ctx);
 			}
-
-			/*err_t code = http_perform_request(ctx);*/
-			/*if(ctx == NULL)*/
-			/*{*/
-				/*WS_DEBUG("webserver: webserver_client_task, memory exhausted, check it\n");*/
-				/*close(client_socket);*/
-
-				/*// next iteration*/
-				/*continue;*/
-			/*}*/
 		}
 	}
     vQueueDelete(webserver_client_task_stop);

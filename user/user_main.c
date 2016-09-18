@@ -22,7 +22,6 @@ static struct http_handler_rule handlers[] =
 {	
 	{ "/getSystemInfo", http_system_info_handler },
 	{ "/getDeviceInfo", http_get_device_info_handler },
-	/*{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },*/
 	{ "/getBroadcastNetworks", http_scan_wifi_info_list_handler },
 	{ "/setDeviceName", http_set_device_name_handler },
 	{ "/setWifi", http_set_main_wifi_handler },
