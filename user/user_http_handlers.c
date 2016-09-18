@@ -93,7 +93,6 @@ int http_system_info_handler(struct query *query)
 	cJSON *json_data = cJSON_CreateObject();
 	cJSON_AddItemToObject(json_root, "data", json_data);
 
-	cJSON_AddStringToObject(json_data, "action", "test");
 	cJSON_AddStringToObject(json_data, "sdk_version", system_get_sdk_version());
 	cJSON_AddNumberToObject(json_data, "chip_id", system_get_chip_id());
 	cJSON_AddNumberToObject(json_data, "cpu", system_get_cpu_freq());
