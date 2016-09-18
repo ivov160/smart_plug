@@ -84,7 +84,7 @@ struct connection
 	struct query* query;			///< объект запроса, создается после первичного парсинга запроса иначе NULL
 };
 
-///@todo replace for event or somthing else using queu mb very fat
+///@todo replace for event or somthing else using queue mb very fat
 /// stop condition
 LOCAL xQueueHandle webserver_task_stop = NULL;
 LOCAL xQueueHandle webserver_client_task_stop = NULL;
@@ -244,6 +244,10 @@ void query_response_body(const char* data, int32_t length, struct query* query)
 		query_response_append("\r\n", STATIC_STRLEN("\r\n"), query);
 		query_response_append(data, length, query);
 	}
+}
+
+void query_done(struct query* query)
+{
 }
 
 /**
@@ -986,7 +990,7 @@ void webserver_start(struct http_handler_rule *user_handlers)
     if(webserver_task_stop != NULL && socket_queue != NULL)
 	{	///@todo read about task memory
         xTaskCreate(webserver_task, "webserver", 280, NULL, WEB_CONNECTION_PRIO, NULL); //512, 376 left,136 used
-		xTaskCreate(webserver_client_task, "webserver_client", 280, NULL, WEB_HANLDERS_PRIO, NULL);
+		xTaskCreate(webserver_client_task, "webserver_client", WEB_HANLDERS_STACK_SIZE, NULL, WEB_HANLDERS_PRIO, NULL);
 	}
 }
 

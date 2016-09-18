@@ -11,7 +11,7 @@
 #define RECV_BUF_SIZE 512
 
 // 1k bytes for send buffer (json)
-#define SEND_BUF_SIZE 1024
+#define SEND_BUF_SIZE 1024 * 2
 
 // for develop 1 connection
 #define CONNECTION_POOL_SIZE 1
@@ -22,8 +22,11 @@
 // prio for task handle request
 #define WEB_HANLDERS_PRIO tskIDLE_PRIORITY + 2
 
-// prio for main task
-#define MAIN_TASK_PRIO tskIDLE_PRIORITY
+// stack size for web handlers stack in words
+#define WEB_HANLDERS_STACK_SIZE (SEND_BUF_SIZE + RECV_BUF_SIZE + 2 * 1024) / 4
+
+// default prio for tasks
+#define DEFAULT_TASK_PRIO tskIDLE_PRIORITY
 
 
 #ifdef __GNUC__

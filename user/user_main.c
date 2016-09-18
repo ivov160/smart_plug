@@ -12,7 +12,7 @@
 #include "user_power.h"
 #include "user_http_handlers.h"
 
-#include "light_http.h"
+#include "asio_light_http.h"
 #include "flash.h"
 
 
@@ -22,8 +22,10 @@ static struct http_handler_rule handlers[] =
 {	
 	{ "/getSystemInfo", http_system_info_handler },
 	{ "/getDeviceInfo", http_get_device_info_handler },
-	/*{ "/getBroadcastNetworks", http_get_wifi_info_list_handler },*/
-	/*{ "/setDeviceName", http_set_device_name_handler },*/
+	{ "/getBroadcastNetworks", http_scan_wifi_info_list_handler },
+	{ "/setDeviceName", http_set_device_name_handler },
+	{ "/setWifi", http_set_main_wifi_handler },
+	{ "/getWifiError", http_get_wifi_error_handler },
 	{ "/on", http_on_handler },
 	{ "/off", http_off_handler },
 	{ "/status", http_status_handler },
@@ -38,72 +40,10 @@ LOCAL void system_info(void *p_args)
 	os_printf("system: Free heap size = %d\r\n", system_get_free_heap_size());
 }
 
-LOCAL void scan_callback(void *args, STATUS status)
-{
-	if(args != NULL)
-	{
-		struct bss_info* bss_list = (struct bss_info*) args;
-		struct bss_info *bss = bss_list;
-
-		uint32_t wifi_index = 0;
-		while(bss != NULL && wifi_index < WIFI_LIST_SIZE)
-		{
-			/*struct wifi_info info;*/
-			/*memset(&info, 0, sizeof(struct wifi_info));*/
-
-			os_printf("wifi: scaned ssid: `%s`\n", bss->ssid);
-
-			/*if(bss->ssid_len < WIFI_NAME_SIZE - 1)*/
-			/*{*/
-				/*memcpy(info.name, bss->ssid, bss->ssid_len);*/
-				/*// явный нолик*/
-				/*info.name[WIFI_NAME_SIZE - 1] = 0;*/
-
-				/*if(!write_wifi_info(&info, wifi_index))*/
-				/*{*/
-					/*os_printf("wifi: failed save wifi settings by index: %d\n", wifi_index);*/
-				/*}*/
-				/*else*/
-				/*{*/
-					/*++wifi_index;*/
-				/*}*/
-			/*}*/
-			/*else*/
-			/*{*/
-				/*os_printf("wifi: ssid is too long ssid: `%s`\n", bss->ssid);*/
-			/*}*/
-			bss = STAILQ_NEXT(bss, next);
-		}
-		free(args);
-	}
-	else
-	{
-		os_printf("wifi: scan results arg is NULL\n");
-	}
-}
-
-LOCAL void scan_wifi()
-{
-	struct scan_config scan;
-	while(!wifi_station_scan(&scan, scan_callback))
-	{
-		os_printf("wifi: failed start scan stations\n");
-		vTaskDelay(1000 / portTICK_RATE_MS);
-	}
-}
-
-LOCAL void main_task(void *pvParameters)
-{
-	scan_wifi();
-	while(true)
-	{
-		vTaskDelay(1000 / portTICK_RATE_MS);
-	}
-    vTaskDelete(NULL);
-}
-
 void user_init(void)
 {
+	uint32_t start_time = system_get_time();
+
 	uart_init_new();
 	UART_SetBaudrate(UART0, BIT_RATE_115200);
 
@@ -118,14 +58,33 @@ void user_init(void)
 	os_timer_setfn(&info_timer, system_info, NULL);
 	os_timer_arm(&info_timer, 4000, true);
 
-	///@todo read about task memory
-	/*xTaskCreate(main_task, "main_task", 280, NULL, MAIN_TASK_PRIO, NULL);*/
+	init_layout();
 
-	struct device_info info;
-	memset(&info, 0, sizeof(struct device_info));
-	read_current_device(&info);
+	struct wifi_info main_wifi;
+	memset(&main_wifi, 0, sizeof(struct wifi_info));
+	if(!read_main_wifi(&main_wifi))
+	{
+		os_printf("user: failed get main_wifi\n");
+	}
 
-	start_wifi(&info);
-	webserver_start(handlers);
+	uint32_t name_length = strnlen(main_wifi.name, WIFI_NAME_SIZE);
+	if(name_length != 0 && name_length < WIFI_NAME_SIZE)
+	{
+		start_station_wifi(&main_wifi, false);
+	}
+	else
+	{
+		struct device_info info;
+		memset(&info, 0, sizeof(struct device_info));
+		if(!read_current_device(&info))
+		{
+			os_printf("user: failed get current device_info\n");
+		}
+		start_ap_wifi(&info);
+	}
+	asio_webserver_start(handlers);
+
+	uint32_t end_time = system_get_time();
+	os_printf("time: system up by: %umks\n", (end_time - start_time));
 }
 
