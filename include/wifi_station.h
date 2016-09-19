@@ -4,8 +4,7 @@
 #include "flash.h"
 #include "user_config.h"
 
-bool set_station_info(struct wifi_info* info);
-bool set_station_info_2(struct wifi_info* info, bool connect);
+bool set_station_info(struct wifi_info* info, bool connect);
 
 const char* wifi_get_last_error();
 

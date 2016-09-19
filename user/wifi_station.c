@@ -273,7 +273,7 @@ static void generate_password(char* password, uint32_t size)
 bool start_station_wifi(struct wifi_info* info, bool connect)
 {
 	wifi_event_task_start();
-	return set_station_info_2(info, connect);
+	return set_station_info(info, connect);
 }
 
 bool start_ap_wifi(struct device_info* info)
@@ -371,7 +371,7 @@ void stop_wifi(bool cleanup)
 	}
 }
 
-bool set_station_info_2(struct wifi_info* info, bool connect)
+bool set_station_info(struct wifi_info* info, bool connect)
 {
 	bool result = true;
 	if(info != NULL)
@@ -454,90 +454,6 @@ bool set_station_info_2(struct wifi_info* info, bool connect)
 	{
 		os_printf("wifi: info is NULL\n");
 		result = false;
-	}
-	return result;
-}
-
-bool set_station_info(struct wifi_info* info)
-{
-	bool result = false;
-	if(info != NULL)
-	{
-		os_printf("wifi: connect to station: %s\n", info->name);
-
-
-		struct station_config config;
-		config.bssid_set = 0;
-		memcpy(config.ssid, info->name, strnlen(info->name, WIFI_NAME_SIZE));
-		memcpy(config.password, info->pass, strnlen(info->pass, WIFI_PASS_SIZE));
-
-		/*if(wifi_station_set_config(&config))*/
-		if(wifi_station_set_config_current(&config))
-		{
-			bool scope_result = true;
-
-			if(wifi_get_opmode() != STATION_MODE && !wifi_set_opmode_current(STATION_MODE))
-			{
-				os_printf("wifi: failed initialize STATION_MODE\n");
-				scope_result = false;
-			}
-
-			if(scope_result && info->ip != 0)
-			{
-				if(wifi_station_dhcpc_status() != DHCP_STOPPED)
-				{
-					if(!wifi_station_dhcpc_stop())
-					{
-						scope_result = false;
-						os_printf("wifi: failed stop dhcpc\n");
-					}
-				}
-
-				if(scope_result)
-				{
-					struct ip_info ip_info;
-					ip_info.ip.addr = info->ip;
-					ip_info.gw.addr = info->gw;
-					ip_info.netmask.addr = info->mask;
-
-					if(!wifi_set_ip_info(STATION_IF, &ip_info))
-					{
-						scope_result = false;
-						os_printf("wifi: failed set ip info\n");
-					}
-				}
-			}
-			else if(wifi_station_dhcpc_status() != DHCP_STARTED)
-			{
-				if(!wifi_station_dhcpc_start())
-				{
-					scope_result = false;
-					os_printf("wifi: failed start dhcpc\n");
-				}
-			}
-
-			if(scope_result && !wifi_station_connect())
-			{
-				os_printf("wifi: failed connection to station\n");
-				scope_result = false;
-			}
-			/*if(scope_result && !wifi_station_set_auto_connect(true))*/
-			/*{*/
-				/*os_printf("wifi: failed set auto connect\n");*/
-				/*scope_result = false;*/
-			/*}*/
-
-			os_printf("wifi: connection state: %d\n", (uint32_t)wifi_station_get_connect_status());
-			result = true & scope_result;
-		}
-		else
-		{
-			os_printf("wifi: failed connect to wifi station\n");
-		}
-	}
-	else
-	{
-		os_printf("wifi: wifi_info is NULL\n");
 	}
 	return result;
 }
