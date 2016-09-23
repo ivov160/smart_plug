@@ -7,6 +7,7 @@
 #define DEVICE_LIST_SIZE 32
 
 #define CUSTOM_NAME_SIZE 64
+#define LOG_MESSAGE_SIZE 64
 #define WIFI_NAME_SIZE 32
 #define WIFI_PASS_SIZE 64
 
@@ -38,6 +39,13 @@ struct wifi_info
 struct custom_name
 {
 	char data[CUSTOM_NAME_SIZE];
+};
+
+struct log_message
+{
+	uint32_t category;
+	uint32_t code;
+	char message[LOG_MESSAGE_SIZE];
 };
 
 void init_layout();

@@ -40,7 +40,7 @@
 #endif
 
 #ifndef HTTPD_MAX_RETRIES
-	#define HTTPD_MAX_RETRIES 4
+	#define HTTPD_MAX_RETRIES 10
 #endif
 
 /** The poll delay is X*500ms */
@@ -201,7 +201,7 @@ LOCAL bool query_response_append(const char* data, uint32_t size, struct query* 
 	{
 		if(query->response_body_length + size >= SEND_BUF_SIZE)
 		{
-			os_printf("query_response_append: overflow response buffer size\n");
+			os_printf("query_response_append: overflow response buffer size, max: %d, current: %d\n", SEND_BUF_SIZE, query->response_body_length + size);
 			return false;
 		}
 

@@ -98,6 +98,10 @@ flash_code flash_hal_write(flash_t handle, uint32_t offset, void* data, uint32_t
  */
 flash_code flash_hal_erase(flash_t handle, uint32_t offset, uint32_t size);
 
+/**
+ * @brief Функция для копирования одной арии в другую
+ */
+flash_code flash_hal_copy_area(flash_t dst, flash_t src);
 
 
 

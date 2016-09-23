@@ -8,8 +8,7 @@
 #define FLASH_UNIT_SIZE 4
 #define ALIGNED_SIZE(size) ((size + (FLASH_UNIT_SIZE - 1)) & -FLASH_UNIT_SIZE) + FLASH_UNIT_SIZE
 
-LOCAL uint32_t read_write_flash(uint32_t addr, void* data, uint32_t size, bool operation);
-LOCAL void set_wifi_info_list_size(uint32_t count);
+static flash_code set_wifi_info_list_size(uint32_t count);
 
 static uint8_t device_types_map_size = 6;
 static char* device_types_map[] = 
@@ -52,6 +51,70 @@ static struct layout_meta_info layout_info =
 
 flash_t main_area = NULL;
 flash_t shadow_area = NULL;
+
+static flash_code area_check(flash_t main, flash_t shadow)
+{
+	flash_code code = flash_hal_check_crc(main);
+	if(code == FLASH_CHECKSUM_MISMATCH)
+	{	
+		if((code = flash_hal_check_crc(shadow)) != FLASH_OK)
+		{
+			os_printf("flash: all area is corrupted\n");
+		}
+		else
+		{	//откат main, shadow цел
+			code = flash_hal_copy_area(main, shadow);
+		}
+	}
+	else if(code == FLASH_OK && (code = flash_hal_check_crc(shadow)) == FLASH_CHECKSUM_MISMATCH)
+	{	// откат shadow. main цел
+		code = flash_hal_copy_area(shadow, main);
+	}
+	return code;
+}
+
+static flash_code flash_write_read_data(uint32_t addr, void* data, uint32_t size, bool write)
+{
+	flash_code result = write 
+		? flash_hal_write(shadow_area, addr, data, size)
+		: flash_hal_read(shadow_area, addr, data, size);
+
+	if(result == FLASH_CHECKSUM_MISMATCH && flash_hal_check_crc(main_area) == FLASH_OK)
+	{	// откат shadow. main цел
+		result = flash_hal_copy_area(shadow_area, main_area);
+		if(result == FLASH_OK)
+		{
+			result = write 
+				? flash_hal_write(shadow_area, addr, data, size)
+				: flash_hal_read(shadow_area, addr, data, size);
+		}
+		else
+		{
+			os_printf("flash: failed restore shadow area from main\n");
+		}
+	}
+	else if(result == FLASH_OK)
+	{
+		result = write 
+			? flash_hal_write(main_area, addr, data, size)
+			: flash_hal_read(main_area, addr, data, size);
+		if(result == FLASH_CHECKSUM_MISMATCH && flash_hal_check_crc(shadow_area) == FLASH_OK)
+		{
+			result = flash_hal_copy_area(main_area, shadow_area);
+			if(result == FLASH_OK)
+			{
+				result = write 
+					? flash_hal_write(main_area, addr, data, size)
+					: flash_hal_read(main_area, addr, data, size);
+			}
+			else
+			{
+				os_printf("flash: failed restore main area from shadow\n");
+			}
+		}
+	}
+	return result;
+}
 
 void init_layout()
 {
@@ -100,7 +163,7 @@ bool read_custom_name(struct custom_name* info)
 	flash_code result = FLASH_OK;
 	if(info != NULL)
 	{
-		result = flash_hal_read(main_area, layout_info.custom_name_offset, (void*) info, CUSTOM_NAME_SIZE);
+		result = flash_write_read_data(layout_info.custom_name_offset, (void*) info, CUSTOM_NAME_SIZE, false);
 		if(result != FLASH_OK)
 		{
 			os_printf("flash: failed read custom_name, result: %d\n", result);
@@ -118,7 +181,7 @@ bool write_custom_name(struct custom_name* info)
 	flash_code result = FLASH_OK;
 	if(info != NULL)
 	{
-		result = flash_hal_write(main_area, layout_info.custom_name_offset, (void*) info, sizeof(struct custom_name));
+		result = flash_write_read_data(layout_info.custom_name_offset, (void*) info, sizeof(struct custom_name), true);
 		if(result != FLASH_OK)
 		{
 			os_printf("flash: failed write custom_name, result: %d\n", result);
@@ -152,7 +215,7 @@ bool read_current_device(struct device_info* info)
 	flash_code result = FLASH_OK;
 	if(info != NULL)
 	{
-		result = flash_hal_read(main_area, layout_info.current_device_offset, (void*) info, sizeof(struct device_info));
+		result = flash_write_read_data(layout_info.current_device_offset, (void*) info, sizeof(struct device_info), false);
 		if(result != FLASH_OK)
 		{
 			os_printf("flash: failed read flash, result: %d\n", result);
@@ -173,7 +236,8 @@ bool read_wifi_info(struct wifi_info* info, uint32_t index)
 		uint32_t count = get_wifi_info_list_size();
 		if(count > index)
 		{
-			flash_code result = flash_hal_read(main_area, layout_info.wifi_list_offset + sizeof(struct wifi_info) * index, (void*) info, sizeof(struct wifi_info));;
+			uint32_t offset = layout_info.wifi_list_offset + sizeof(struct wifi_info) * index;
+			result = flash_write_read_data(offset, (void*) info, sizeof(struct wifi_info), false);
 			if(result != FLASH_OK)
 			{
 				os_printf("flash: failed read wifi info, result: %d\n", result);
@@ -196,13 +260,14 @@ bool write_wifi_info(struct wifi_info* info, uint32_t index)
 	flash_code result = FLASH_OK;
 	if(info != NULL && index < WIFI_LIST_SIZE)
 	{
-		result = flash_hal_write(main_area, layout_info.wifi_list_offset + sizeof(struct wifi_info) * index, (void*) info, sizeof(struct wifi_info));
+		uint32_t offset = layout_info.wifi_list_offset + sizeof(struct wifi_info) * index;
+		result = flash_write_read_data(offset, (void*) info, sizeof(struct wifi_info), true);
 		if(result == FLASH_OK)
 		{
 			uint32_t count = get_wifi_info_list_size();
 			if(count == 0 || index > count - 1)
 			{
-				set_wifi_info_list_size(index + 1);
+				result = set_wifi_info_list_size(index + 1);
 			}
 		}
 		else
@@ -212,6 +277,7 @@ bool write_wifi_info(struct wifi_info* info, uint32_t index)
 	}
 	else
 	{
+		result = FLASH_OUT_OR_RANGE;
 		os_printf("flash: wifi_info is NULL or index: %d out of %d\n", index, WIFI_LIST_SIZE);
 	}
 	return result == FLASH_OK;
@@ -222,7 +288,11 @@ bool read_main_wifi(struct wifi_info* info)
 	flash_code result = FLASH_OK;
 	if(info != NULL)
 	{
-		result = flash_hal_read(main_area, layout_info.main_wifi_offset, (void*) info, sizeof(struct wifi_info));
+		result = flash_write_read_data(layout_info.main_wifi_offset, (void*) info, sizeof(struct wifi_info), false);
+		if(result != FLASH_OK)
+		{
+			os_printf("flash: failed read main wifi info, result: %d\n", result);
+		}
 	}
 	else
 	{
@@ -236,7 +306,11 @@ bool write_main_wifi(struct wifi_info* info)
 	flash_code result = FLASH_OK;
 	if(info != NULL)
 	{
-		result = flash_hal_write(main_area, layout_info.main_wifi_offset, (void*) info, sizeof(struct wifi_info));
+		result = flash_write_read_data(layout_info.main_wifi_offset, (void*) info, sizeof(struct wifi_info), true);
+		if(result != FLASH_OK)
+		{
+			os_printf("flash: failed write main wifi info, result: %d\n", result);
+		}
 	}
 	else
 	{
@@ -253,22 +327,22 @@ bool erase_main_wifi()
 uint32_t get_wifi_info_list_size()
 {
 	uint32_t count = 0;
-	flash_code result = flash_hal_read(main_area, layout_info.wifi_list_count_offset, (void*) &count, sizeof(uint32_t));;
+	flash_code result = flash_write_read_data(layout_info.wifi_list_count_offset, (void*) &count, sizeof(uint32_t), false);
 	if(result != FLASH_OK)
 	{
 		os_printf("flash: failed read wifi info list size, result: %d\n", result);
-		count = 0;
 	}
 	return count;
 }
 
-LOCAL void set_wifi_info_list_size(uint32_t count)
+static flash_code set_wifi_info_list_size(uint32_t count)
 {
-	flash_code result = flash_hal_write(main_area, layout_info.wifi_list_count_offset, (void*) &count, sizeof(uint32_t));;
+	flash_code result = flash_write_read_data(layout_info.wifi_list_count_offset, (void*) &count, sizeof(uint32_t), true);
 	if(result != FLASH_OK)
 	{
 		os_printf("flash: failed write wifi info list size, result: %d\n", result);
 	}
+	return result;
 }
 
 

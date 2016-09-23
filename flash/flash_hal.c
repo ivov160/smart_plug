@@ -17,16 +17,16 @@
 struct _flash
 {
 	uint32_t addr;
-	uint8_t sectors;
+	int32_t sectors;
 	uint32_t data_size;
 	uint32_t real_size;
 };
 
 
-LOCAL flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* data, uint32_t size, bool write);
-LOCAL flash_code private_flash_hal_check_crc(flash_t handle, bool write);
-LOCAL uint32_t flash_hal_calc_sector_crc(uint8_t *data, uint32_t size);
-LOCAL flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, uint32_t size, struct flash_sectors_range* range);
+static flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* data, uint32_t size, bool write);
+static flash_code private_flash_hal_check_crc(flash_t handle, bool write);
+static uint32_t flash_hal_calc_sector_crc(uint8_t *data, uint32_t size);
+static flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, uint32_t size, struct flash_sectors_range* range);
 
 uint32_t flash_hal_get_sectors_count(uint32_t size)
 {
@@ -137,7 +137,7 @@ flash_code flash_hal_write(flash_t handle, uint32_t offset, void* data, uint32_t
 	return flash_hal_read_write(handle, offset, data, size, true);
 }
 
-LOCAL flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* data, uint32_t size, bool write)
+static flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* data, uint32_t size, bool write)
 {
 	flash_code code = handle != NULL ? flash_hal_check_crc(handle) : FLASH_INVALID_HANDLE;
 	if(code == FLASH_OK)
@@ -149,7 +149,7 @@ LOCAL flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* dat
 
 			uint32_t total_size = 0;
 			uint32_t sector = range.first_index;
-			uint32_t sectors_left = range.count;
+			int32_t sectors_left = range.count;
 
 			while(sectors_left > 0)
 			{	 // сколько читать секторов
@@ -265,10 +265,10 @@ LOCAL flash_code flash_hal_read_write(flash_t handle, uint32_t offset, void* dat
 			}
 			free(buffer);
 
-			/*if(write)*/
-			/*{*/
-				/*code = private_flash_hal_check_crc(handle, true);*/
-			/*}*/
+			if(write)
+			{
+				code = private_flash_hal_check_crc(handle, true);
+			}
 		}
 	}
 	return code;
@@ -292,71 +292,77 @@ flash_code flash_hal_check_crc(flash_t handle)
 	return private_flash_hal_check_crc(handle, false);
 }
 
-LOCAL flash_code private_flash_hal_check_crc(flash_t handle, bool write)
+static flash_code private_flash_hal_check_crc(flash_t handle, bool write)
 {
-	/*flash_code code = handle != NULL ? FLASH_OK : FLASH_INVALID_HANDLE;*/
-	/*if(code == FLASH_OK)*/
-	/*{*/
-		/*uint32_t area_crc = 0;*/
-		/*uint32_t current_crc = 0;*/
+	flash_code code = handle != NULL ? FLASH_OK : FLASH_INVALID_HANDLE;
+	if(code == FLASH_OK)
+	{
+		uint32_t area_crc = 0;
+		uint32_t current_crc = 0;
 
-		/*uint32_t* crc_buffer = (uint32_t*) malloc(FLASH_CRC_SIZE * 2);*/
-		/*for(uint32_t sector = 0; sector < handle->sectors; ++sector)*/
-		/*{	*/
-			/*uint32_t aligned_addr = (handle->addr + sector * FLASH_SEGMENT_SIZE + FLASH_SECTOR_DATA_SIZE) & (-FLASH_UNIT_SIZE);*/
-			/*uint32_t crc_read_size = sector == handle->sectors - 1 ? FLASH_CRC_SIZE * 2 : FLASH_CRC_SIZE;*/
+		uint32_t* crc_buffer = (uint32_t*) malloc(FLASH_CRC_SIZE * 2);
+		for(uint32_t sector = 0; sector < handle->sectors; ++sector)
+		{	
+			uint32_t aligned_addr = (handle->addr + sector * FLASH_SEGMENT_SIZE + FLASH_SECTOR_DATA_SIZE) & (-FLASH_UNIT_SIZE);
+			uint32_t crc_read_size = sector == handle->sectors - 1 ? FLASH_CRC_SIZE * 2 : FLASH_CRC_SIZE;
 
-			/*memset(crc_buffer, 0, FLASH_CRC_SIZE * 2);*/
-			/*code = (spi_flash_read(*/
-					/*aligned_addr, */
-					/*crc_buffer, */
-					/*crc_read_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK);*/
+			memset(crc_buffer, 0, FLASH_CRC_SIZE * 2);
+			code = (spi_flash_read(
+					aligned_addr,
+					crc_buffer,
+					crc_read_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK);
 
-			/*if(code != FLASH_OK)*/
-			/*{	// не удалось прочитать flash*/
-				/*break;*/
-			/*}*/
+			if(code != FLASH_OK)
+			{	// не удалось прочитать flash
+				break;
+			}
 
-			/*current_crc = crc32(current_crc, (uint8_t*) crc_buffer, FLASH_CRC_SIZE);*/
-			/*if(sector == handle->sectors - 1)*/
-			/*{*/
-				/*area_crc = crc_buffer[1];*/
-			/*}*/
-		/*}*/
-		/*free(crc_buffer);*/
+			current_crc = crc32(current_crc, (uint8_t*) crc_buffer, FLASH_CRC_SIZE);
+			if(sector == handle->sectors - 1)
+			{
+				area_crc = crc_buffer[1];
+			}
+		}
+		free(crc_buffer);
 
-		/*if(write)*/
-		/*{	// записываем новую сумму для area*/
-			/*uint32_t aligned_addr = (handle->addr + (handle->sectors - 1) * FLASH_SEGMENT_SIZE) & (-FLASH_UNIT_SIZE);*/
-			/*uint8_t* sector_buffer = (uint8_t*) zalloc(FLASH_SEGMENT_SIZE);*/
-			/*if((code = spi_flash_read(*/
-					/*aligned_addr, */
-					/*(uint32_t*) sector_buffer,*/
-					/*FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK) == FLASH_OK)*/
-			/*{*/
-				/*uint32_t sector_crc_offset = FLASH_SECTOR_DATA_SIZE + FLASH_CRC_SIZE;*/
-				/**((uint32_t*)(sector_buffer + sector_crc_offset)) = current_crc;*/
+		if(write)
+		{	// записываем новую сумму для area
+			uint32_t aligned_addr = (handle->addr + (handle->sectors - 1) * FLASH_SEGMENT_SIZE) & (-FLASH_UNIT_SIZE);
+			uint8_t* sector_buffer = (uint8_t*) zalloc(FLASH_SEGMENT_SIZE);
+			if((code = spi_flash_read(
+					aligned_addr,
+					(uint32_t*) sector_buffer,
+					FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK) == FLASH_OK)
+			{
+				uint32_t sector_crc_offset = FLASH_SECTOR_DATA_SIZE + FLASH_CRC_SIZE;
+				*((uint32_t*)(sector_buffer + sector_crc_offset)) = current_crc;
 
-				/*if((code = spi_flash_erase_sector(aligned_addr / FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK */
-						/*? FLASH_SPI_ERROR : FLASH_OK) == FLASH_OK)*/
-				/*{*/
-					/*code = spi_flash_write(aligned_addr, (uint32_t*) sector_buffer, FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK */
-						/*? FLASH_SPI_ERROR : FLASH_OK;*/
-				/*}*/
-			/*}*/
-			/*free(sector_buffer);*/
-		/*}*/
-		/*///@todo удалить заглушку, после того, как crc будет нормально записываться*/
-		/*else if(area_crc != 0xFFFFFFFF)*/
-		/*{*/
-			/*code = area_crc != current_crc ? FLASH_CHECKSUM_MISMATCH : FLASH_OK;*/
-		/*}*/
-	/*}*/
-	/*return code;*/
-	return FLASH_OK;
+				code = spi_flash_erase_sector(aligned_addr / FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK
+						? FLASH_SPI_ERROR : FLASH_OK;
+
+				if(code == FLASH_OK)
+				{
+					code = spi_flash_write(aligned_addr, (uint32_t*) sector_buffer, FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK
+						? FLASH_SPI_ERROR : FLASH_OK;
+				}
+				else
+				{
+					os_printf("flash: erase sector failed addr: %x, sector: %d\n", aligned_addr, aligned_addr / FLASH_SEGMENT_SIZE);
+				}
+			}
+			free(sector_buffer);
+		}
+		///@todo удалить заглушку, после того, как crc будет нормально записываться
+		else if(area_crc != 0xFFFFFFFF)
+		{
+			code = area_crc != current_crc ? FLASH_CHECKSUM_MISMATCH : FLASH_OK;
+		}
+	}
+	return code;
+	/*return FLASH_OK;*/
 }
 
-LOCAL uint32_t flash_hal_calc_sector_crc(uint8_t *data, uint32_t size)
+static uint32_t flash_hal_calc_sector_crc(uint8_t *data, uint32_t size)
 {
 	uint32_t crc = 0;
 	if(data != NULL && size != 0)
@@ -374,7 +380,7 @@ LOCAL uint32_t flash_hal_calc_sector_crc(uint8_t *data, uint32_t size)
  * @brief Функция для вычисления диапазона секторов для данного объема памяти
  *
  */
-LOCAL flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, uint32_t size, struct flash_sectors_range* range)
+static flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, uint32_t size, struct flash_sectors_range* range)
 {
 	flash_code code = handle != NULL ? FLASH_OK : FLASH_INVALID_HANDLE;
 	if(code == FLASH_OK)
@@ -394,4 +400,74 @@ LOCAL flash_code flash_hal_get_sectors_range(flash_t handle, uint32_t offset, ui
 	return code;
 }
 
+flash_code flash_hal_copy_area(flash_t dst, flash_t src)
+{
+	flash_code code = src != NULL && dst != NULL ? FLASH_OK : FLASH_INVALID_HANDLE;
+	if(code == FLASH_OK)
+	{
+		if(src->sectors == dst->sectors)
+		{
+			uint8_t* buffer = (uint8_t*)malloc(FLASH_BUFFER_SIZE);
+
+			int32_t sector = 0;
+			int32_t sectors_left = src->sectors;
+
+			while(sectors_left > 0)
+			{
+				uint32_t sectors_read = sectors_left < FLASH_BUFFER_SECTORS ? sectors_left : FLASH_BUFFER_SECTORS;
+				uint32_t src_aligned_addr = (src->addr + sector * FLASH_SEGMENT_SIZE) & (-FLASH_UNIT_SIZE);
+				uint32_t read_size = sectors_read * FLASH_SEGMENT_SIZE;
+
+				code = (spi_flash_read(
+							src_aligned_addr, 
+							(uint32_t*)buffer, 
+							read_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK);
+
+				if(code != FLASH_OK)
+				{
+					break;
+				}
+
+				for(uint32_t j = 0; j < sectors_read; ++j)
+				{
+					uint32_t flash_sector_addr = dst->addr + (sector + j *  FLASH_SEGMENT_SIZE);
+					code = (spi_flash_erase_sector(flash_sector_addr / FLASH_SEGMENT_SIZE) != SPI_FLASH_RESULT_OK 
+									? FLASH_SPI_ERROR 
+									: FLASH_OK);
+
+					if(code != FLASH_OK)
+					{
+						break;
+					}
+				}
+
+				if(code != FLASH_OK)
+				{
+					break;
+				}
+
+				uint32_t dst_aligned_addr = (dst->addr + sector * FLASH_SEGMENT_SIZE) & (-FLASH_UNIT_SIZE);
+				code = (spi_flash_write(
+						dst_aligned_addr, 
+						(uint32_t*)buffer, 
+						read_size) != SPI_FLASH_RESULT_OK ? FLASH_SPI_ERROR : FLASH_OK);
+
+				if(code != FLASH_OK)
+				{	// не удалось записать buffer на flash
+					break;
+				}
+
+				// следующий сектор для чтения
+				sector += sectors_read;
+				sectors_left -= sectors_read;
+			}
+			free(buffer);
+		}
+		else
+		{
+			os_printf("flash: copy area failed, area sectors mismatch src: %d, dst: %d\n", src->sectors, dst->sectors);
+		}
+	}
+	return code;
+}
 
