@@ -18,6 +18,7 @@
  - flex
  - gperf
  - libtool
+ - texinfo
  - возможно еще что-то, во время сборки будет говорить чего нет 
 
 Сборка toolchain
@@ -65,14 +66,3 @@ SDK_PATH=~/esp/ESP8266_RTOS_SDK BIN_PATH=./bin ./gen_misc.sh
 Прошивка
 
 esptool.py --port /dev/ttyUSB0 --baud 115200 write_flash 0x00000 ./bin/eagle.flash.bin  0x20000 ./bin/eagle.irom0text.bin 0x6C000 ./devices/plug.device_info
-
-
-
-
-
-
-
-
-
-
-
