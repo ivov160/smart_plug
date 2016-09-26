@@ -8,7 +8,7 @@
 //#define GDBSTUB_USE_OWN_STACK 1
 
 // 512 bytes for headers and body
-#define RECV_BUF_SIZE 512
+#define RECV_BUF_SIZE 1024
 
 // 1k bytes for send buffer (json)
 #define SEND_BUF_SIZE 1024 * 2

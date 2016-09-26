@@ -40,7 +40,7 @@
 #endif
 
 #ifndef HTTPD_MAX_RETRIES
-	#define HTTPD_MAX_RETRIES 10
+	#define HTTPD_MAX_RETRIES 15
 #endif
 
 /** The poll delay is X*500ms */
@@ -421,7 +421,7 @@ static err_t http_close_conn(struct tcp_pcb *pcb, struct http_ctx* ctx)
 	}
 	else if(ctx != NULL) 
 	{
-		if(ctx->query->after_response != NULL)
+		if(ctx->query != NULL && ctx->query->after_response != NULL)
 		{
 			ctx->query->after_response(ctx->query, ctx->query->user_data);
 		}
@@ -892,7 +892,7 @@ static err_t asio_http_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_
 
 	if(p->tot_len > RECV_BUF_SIZE)
 	{
-		os_printf("asio_http_recv: received data so big\n");
+		os_printf("asio_http_recv: received data so big, total_len: %d, buffer_size: %d\n", p->tot_len, RECV_BUF_SIZE);
 		tcp_recved(pcb, p->tot_len);
 		pbuf_free(p);
 		http_close_conn(pcb, ctx);

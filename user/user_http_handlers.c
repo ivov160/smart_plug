@@ -7,12 +7,20 @@
 #include "cJSON.h"
 #include "esp_common.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+
 #include "lwip/ip_addr.h"
 
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
+#define INITIATOR_TIMER 1000
+#define INITIATOR_POOL_SIZE 5
+
 static os_timer_t wifi_connect_timer;
-static struct query* ptr = NULL;
+
+static xQueueHandle scan_callback_initiators  = NULL;
 
 static void wifi_connect_callback(void *p_args)
 {
@@ -36,49 +44,58 @@ static void wifi_reconnect_callback(struct query* query, void* data)
 
 static void http_scan_callback(void *args, STATUS status)
 {
-	cJSON *json_root = cJSON_CreateObject();
-	if(status == OK)
+	uintptr_t item = 0;
+	if(xQueueReceive(scan_callback_initiators, &item, INITIATOR_TIMER / portTICK_RATE_MS))
 	{
-		if(args != NULL)
+		struct query* query = (struct query*) item;
+		cJSON *json_root = cJSON_CreateObject();
+
+		if(status == OK)
 		{
-			cJSON_AddBoolToObject(json_root, "success", true);
-			cJSON *json_data = cJSON_CreateArray();
-
-			struct bss_info* bss_list = (struct bss_info*) args;
-			struct bss_info *bss = bss_list;
-
-			while(bss != NULL)
+			if(args != NULL)
 			{
-				os_printf("wifi: scaned ssid: `%s`\n", bss->ssid);
-				cJSON *json_value = cJSON_CreateString(bss->ssid);
-				cJSON_AddItemToArray(json_data, json_value);
-				bss = STAILQ_NEXT(bss, next);
+				cJSON_AddBoolToObject(json_root, "success", true);
+				cJSON *json_data = cJSON_CreateArray();
+
+				struct bss_info* bss_list = (struct bss_info*) args;
+				struct bss_info *bss = bss_list;
+
+				while(bss != NULL)
+				{
+					os_printf("wifi: scaned ssid: `%s`\n", bss->ssid);
+					cJSON *json_value = cJSON_CreateString(bss->ssid);
+					cJSON_AddItemToArray(json_data, json_value);
+					bss = STAILQ_NEXT(bss, next);
+				}
+				/*free(args);*/
+				cJSON_AddItemToObject(json_root, "data", json_data);
 			}
-			/*free(args);*/
-			cJSON_AddItemToObject(json_root, "data", json_data);
+			else
+			{
+				os_printf("wifi: scan results arg is NULL\n");
+				cJSON_AddBoolToObject(json_root, "success", false);
+			}
 		}
 		else
 		{
-			os_printf("wifi: scan results arg is NULL\n");
 			cJSON_AddBoolToObject(json_root, "success", false);
 		}
+
+		char* data = cJSON_Print(json_root);
+
+		query_response_status(200, query);
+		query_response_header("Content-Type", "application/json", query);
+		query_response_body(data, strlen(data), query);
+
+		cJSON_Delete(json_root);
+		free(data);
+
+		query_done(query);
 	}
 	else
 	{
-		cJSON_AddBoolToObject(json_root, "success", false);
+		os_printf("http: failed fetch callback initiator\n");
 	}
-
-	char* data = cJSON_Print(json_root);
-
-	query_response_status(200, ptr);
-	query_response_header("Content-Type", "application/json", ptr);
-	query_response_body(data, strlen(data), ptr);
-
-	cJSON_Delete(json_root);
-	free(data);
-
-	query_done(ptr);
-	ptr = NULL;
 }
 
 int http_system_info_handler(struct query *query)
@@ -161,8 +178,14 @@ int http_get_device_info_handler(struct query *query)
 
 int http_scan_wifi_info_list_handler(struct query *query)
 {
+	if(scan_callback_initiators == NULL)
+	{
+		scan_callback_initiators = xQueueCreate(INITIATOR_POOL_SIZE, sizeof(uintptr_t));
+	}
+
 	int result = 0;
-	if(ptr != NULL)
+	uintptr_t item = (uintptr_t)query;
+	if(!xQueueSend(scan_callback_initiators, &item, INITIATOR_TIMER / portTICK_RATE_MS))
 	{
 		result = 1;
 
@@ -179,7 +202,6 @@ int http_scan_wifi_info_list_handler(struct query *query)
 	}
 	else
 	{
-		ptr = query;
 		if(!wifi_station_scan(NULL, http_scan_callback))
 		{
 			os_printf("http: failed start wifi scan\n");
