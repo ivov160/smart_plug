@@ -100,9 +100,14 @@ static void wifi_check_station_state()
 		{
 			os_printf("wifi: failed station connect, error detected\n");
 
+			if(!wifi_set_opmode_current(NULL_MODE))
+			{
+				os_printf("wifi: failed shutdown net\n");
+			}
+
 			if(!wifi_set_opmode_current(STATIONAP_MODE))
 			{
-				os_printf("wifif: failed restore ap mode\n");
+				os_printf("wifi: failed restore ap mode\n");
 			}
 		}
 	}
@@ -317,7 +322,7 @@ bool start_ap_wifi(struct device_info* info)
 			os_printf("wifi: ssid: %s, render_size: %d, password: %s\n", ap_config.ssid, render_size, ap_config.password);
 		}
 
-		if(result && !wifi_softap_set_config_current(&ap_config))
+		if(result && !wifi_softap_set_config(&ap_config))
 		{
 			os_printf("wifi: failed set softap_config\n");
 			result = false;
