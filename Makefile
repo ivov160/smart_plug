@@ -25,6 +25,7 @@ SUBDIRS=    	\
 	light_http	\
 	flash		\
 	mesh		
+	#cstl/src
 
 ifeq ($(FLAVOR),debug)
 SUBDIRS += \
@@ -63,7 +64,9 @@ COMPONENTS_eagle.app.v6 = \
 	driver/libdriver.a \
 	light_http/liblight_http.a \
 	flash/libflash.a \
-	mesh/libmesh.a 
+	mesh/libmesh.a  
+	#cstl/src/libcstl.a
+	
 
 ifeq ($(FLAVOR),debug)
 COMPONENTS_eagle.app.v6 += \

@@ -11,6 +11,7 @@
 #include "wifi_station.h"
 #include "user_power.h"
 #include "user_http_handlers.h"
+#include "user_mesh_handlers.h"
 
 #include "mesh.h"
 #include "flash.h"
@@ -29,7 +30,7 @@
 
 LOCAL os_timer_t info_timer;
 
-static struct http_handler_rule handlers[] = 
+static struct http_handler_rule http_handlers[] = 
 {	
 	{ "/getSystemInfo", http_system_info_handler },
 	{ "/getDeviceInfo", http_get_device_info_handler },
@@ -43,6 +44,12 @@ static struct http_handler_rule handlers[] =
 	{ "/testModeOn",  http_start_test_mode},
 	{ "/testModeOff",  http_stop_test_mode},
 	{ NULL, NULL },
+};
+
+static struct mesh_message_handlers meshhandlers[] = 
+{	
+	{ mesh_keep_alive, mesh_keep_alive_handler },
+	{ mesh_keep_alive, NULL },
 };
 
 LOCAL void system_info(void *p_args)
@@ -129,8 +136,8 @@ void user_init(void)
 		}
 		start_ap_wifi(&info);
 	}
-	asio_webserver_start(handlers);
-	asio_mesh_start();
+	asio_webserver_start(http_handlers);
+	/*asio_mesh_start();*/
 
 	uint32_t end_time = system_get_time();
 	os_printf("time: system up by: %umks\n", (end_time - start_time));
