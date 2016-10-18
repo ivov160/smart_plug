@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-/*#include <memory.h>*/
 #include <string.h>
 
 
@@ -29,11 +28,11 @@ void free_message(struct mesh_message* msg)
 	free(msg);
 }
 
-void send_keep_alive(struct mesh_ctx* mesh, struct device_info* info)
+void send_keep_alive(struct mesh_ctx* mesh, struct mesh_device_info* info)
 {
 	LOG("keep_alive broadcast\n");
 
-	struct mesh_message* msg = new_message(mesh_keep_alive, info, sizeof(struct device_info));
+	struct mesh_message* msg = new_message(mesh_keep_alive, info, sizeof(struct mesh_device_info));
 	ssize_t msg_size = sizeof(struct mesh_message);
 
 	uint32_t sended_data = mesh_send_data(mesh, (void*) msg, msg_size, BROADCAST_ADDR);
@@ -67,11 +66,11 @@ void send_request_devices_info(struct mesh_ctx* mesh)
 	free_message(msg);
 }
 
-void send_device_info(struct mesh_ctx* mesh, struct device_info* info, uint32_t dst)
+void send_device_info(struct mesh_ctx* mesh, struct mesh_device_info* info, uint32_t dst)
 {
 	LOG("send_device_info\n");
 
-	struct mesh_message* msg = new_message(mesh_device_info_response, info, sizeof(struct device_info));
+	struct mesh_message* msg = new_message(mesh_device_info_response, info, sizeof(struct mesh_device_info));
 	ssize_t msg_size = sizeof(struct mesh_message);
 
 	uint32_t sended_data = mesh_send_data(mesh, (void*) msg, msg_size, dst);
@@ -106,7 +105,7 @@ void send_request_device_info_confirm(struct mesh_ctx* mesh, uint32_t dst)
 }
 
 
-void call_handler(struct mesh_message_handlers* handlers, struct mesh_message* msg)
+void call_handler(struct mesh_message_handlers* handlers, struct mesh_ctx* ctx, struct mesh_sender_info* sender, struct mesh_message* msg)
 {
 	if(handlers != NULL && msg != NULL)
 	{
@@ -124,7 +123,7 @@ void call_handler(struct mesh_message_handlers* handlers, struct mesh_message* m
 		// checking end of handlers list
 		if(handler->handler != NULL)
 		{
-			handler->handler(msg);
+			handler->handler(ctx, sender, msg);
 		}
 		else
 		{

@@ -2,7 +2,6 @@
 #define __FLASH_H__
 
 #include "esp_common.h"
-#include "device_info.h"
 
 #define WIFI_LIST_SIZE 32
 #define DEVICE_LIST_SIZE 32
@@ -17,6 +16,14 @@
 
 // реальный размер занимаемый на flash FLASH_SEGMENTS * 2 (для теневых копий)
 #define FLASH_SEGMENTS 4
+
+struct device_info
+{
+	uint8_t device_type;
+	uint8_t device_id;
+	uint8_t active;
+	uint8_t reserved;
+};
 
 struct wifi_info
 {

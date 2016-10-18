@@ -46,9 +46,9 @@ static struct http_handler_rule http_handlers[] =
 	{ NULL, NULL },
 };
 
-static struct mesh_message_handlers meshhandlers[] = 
+static struct mesh_message_handlers mesh_handlers[] = 
 {	
-	{ mesh_keep_alive, mesh_keep_alive_handler },
+	/*{ mesh_keep_alive, mesh_keep_alive_handler },*/
 	{ mesh_keep_alive, NULL },
 };
 

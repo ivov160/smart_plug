@@ -14,9 +14,17 @@
 	#define BROADCAST_ADDR 0xFFFFFFFF
 #endif
 
+#ifndef ANY_ADDR
+	#define ANY_ADDR 0x00000000
+#endif
+
+#if defined __cplusplus
+extern "C" {
+#endif
+
 struct mesh_ctx;
 
-typedef void (* mesh_message_handler)(struct mesh_message* message);
+typedef void (* mesh_message_handler)(struct mesh_ctx* ctx, struct mesh_sender_info* sender, struct mesh_message* message);
 
 struct mesh_message_handlers
 {
@@ -24,10 +32,15 @@ struct mesh_message_handlers
 	mesh_message_handler handler;	
 };
 
+
 struct mesh_ctx* mesh_start(struct mesh_message_handlers* handlers, uint32_t addr, uint32_t port);
 void mesh_stop(struct mesh_ctx* ctx);
 
 uint32_t mesh_send_data(struct mesh_ctx* ctx, void* data, uint32_t size, uint32_t ip);
 uint32_t mesh_receive_data(struct mesh_ctx* ctx, void* data, uint32_t size);
+
+#if defined __cplusplus
+}
+#endif
 
 #endif

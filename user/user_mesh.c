@@ -1,4 +1,4 @@
-#include "esp_mesh.h"
+#include "user_mesh.h"
 #include "message.h"
 
 #define RECV_BUF_SIZE 1024
@@ -29,10 +29,14 @@ static void asio_mesh_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf 
 				else
 				{
 					struct mesh_message* msg = (struct mesh_message*) p->payload;
-					os_printf("mesh[asio_mesh_recv_callback]: message.magic: %d, message.command: %d, message.sender: %d, message.data_size: %d\n", 
-							msg->magic, msg->command, msg->sender, msg->data_size);
+					os_printf("mesh[asio_mesh_recv_callback]: message.magic: %d, message.command: %d, message.sender_id: %d, message.data_size: %d\n", 
+							msg->magic, msg->command, msg->sender_id, msg->data_size);
 
-					call_handler(ctx->handlers, msg);
+					struct mesh_sender_info sender;
+					sender.ip = addr->addr;
+					sender.port = port;
+
+					call_handler(ctx->handlers, ctx, &sender, msg);
 				}
 			}
 			pbuf_free(p);
