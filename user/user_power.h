@@ -25,5 +25,17 @@ void power_up();
  */
 int8_t power_status();
 
+/**
+ * @brief Функция запуска тестового режима
+ * В тестовом режиме нагрузка постоянно переключается on/off с указанной переодичностью
+ * @param[in] ms Время переключения нагрузки в ms
+ */
+void power_start_test_mode(uint32_t ms);
+
+/**
+ * @brief Функция для остановки тестового режима работы
+ */
+void power_stop_test_mode();
+
 
 #endif

@@ -468,3 +468,51 @@ int http_status_handler(struct query *query)
 	return 1;
 }
 
+int http_start_test_mode(struct query *query)
+{
+	cJSON *json_root = cJSON_CreateObject();
+
+	const char* timer_str = query_get_param("timeout", query, REQUEST_POST);
+	uint32_t timeout = 0;
+		
+	if(timer_str != NULL && (timeout = atoi(timer_str)) != 0)
+	{
+		power_start_test_mode(timeout);
+		cJSON_AddBoolToObject(json_root, "success", true);
+	}
+	else
+	{
+		cJSON_AddBoolToObject(json_root, "success", false);
+	}
+
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
+	cJSON_Delete(json_root);
+	free(data);
+
+	return 1;
+}
+
+int http_stop_test_mode(struct query *query)
+{
+	cJSON *json_root = cJSON_CreateObject();
+
+	cJSON_AddBoolToObject(json_root, "success", true);
+	power_stop_test_mode();
+		
+	char* data = cJSON_Print(json_root);
+
+	query_response_status(200, query);
+	query_response_header("Content-Type", "application/json", query);
+	query_response_body(data, strlen(data), query);
+
+	cJSON_Delete(json_root);
+	free(data);
+
+	return 1;
+}
+

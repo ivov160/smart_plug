@@ -23,7 +23,8 @@ SUBDIRS=    	\
 	user   		\
 	driver		\
 	light_http	\
-	flash		
+	flash		\
+	mesh		
 
 ifeq ($(FLAVOR),debug)
 SUBDIRS += \
@@ -61,7 +62,8 @@ COMPONENTS_eagle.app.v6 = \
 	user/libuser.a	\
 	driver/libdriver.a \
 	light_http/liblight_http.a \
-	flash/libflash.a 
+	flash/libflash.a \
+	mesh/libmesh.a 
 
 ifeq ($(FLAVOR),debug)
 COMPONENTS_eagle.app.v6 += \
@@ -90,6 +92,7 @@ LINKFLAGS_eagle.app.v6 =    \
     -lphy                   \
     -lpp                    \
     -lwpa                   \
+	-lpwm					\
     $(DEP_LIBS_eagle.app.v6)\
     -Wl,--end-group
 
@@ -134,7 +137,7 @@ DDEFINES +=				\
 # Required for each makefile to inherit from the parent
 #
 
-INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)driver -I $(PDIR)light_http -I $(PDIR)flash
+INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)driver -I $(PDIR)light_http -I $(PDIR)flash -I $(PDIR)mesh
 sinclude $(SDK_PATH)/Makefile
 
 .PHONY: FORCE

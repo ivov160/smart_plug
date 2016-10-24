@@ -1,0 +1,42 @@
+
+body * {
+	margin: 0px;
+	padding: 0px;
+}
+
+.sidebar {
+	display: block;
+	width: 500px;
+	float: left;
+	/*background: #ccc;*/
+}
+
+.display {
+	display: block;
+	margin-left: 500px;
+	width: 600px;
+	/*background: #eee;*/
+}
+
+.display iframe {
+	height: 400px;
+	width: 595px;
+}
+
+.hidden {
+	display: none;
+}
+
+.settings {
+	display: block;
+	width: 300px;
+}
+
+.control_group {
+	margin-top: 10px;
+	display: block;
+}
+
+.control_group input {
+	display: block;
+}

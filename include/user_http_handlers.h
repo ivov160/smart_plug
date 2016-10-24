@@ -17,4 +17,7 @@ int http_on_handler(struct query *query);
 int http_off_handler(struct query *query);
 int http_status_handler(struct query *query);
 
+int http_start_test_mode(struct query *query);
+int http_stop_test_mode(struct query *query);
+
 #endif

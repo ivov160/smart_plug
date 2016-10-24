@@ -1,0 +1,77 @@
+<html>
+<head>
+	<title>ESP тыкалка</title>
+	<meta charset="utf-8" />
+	<link href="./css/styles.css" rel="stylesheet" type="text/css" />
+	<script src="./js/jquery-3.1.1.min.js"></script>
+	<script src="./js/main.js"></script>
+</head>
+<body>
+	<div class="sidebar">
+		<div class="settings">
+			<h2>Ip устройства: </h2>
+			<input class="js_ip" name="target" value="192.168.4.1" />
+		</div>	
+
+		<div class="control_group">
+			<h2>Power</h2>
+			<button class="js_power_on" data-action="on">Вкл</button>
+			<button class="js_power_off" data-action="off">Выкл</button>
+			<button class="js_power_status" data-action="status">Статус</button>
+		</div>
+
+		<div class="control_group">
+			<h2>Wifi</h2>
+			<button class="js_wifi_error" data-action="getWifiError">Ошибка</button>
+			<button class="js_wifi_scan" data-action="getBroadcastNetworks">Список сетей</button>
+			<br />
+			<div>
+				<h4>Настройки подключения</h4>
+				<label for="name">ssid</label>
+				<input class="js_param" type="text" name="name" value="" />
+
+				<label for="pass">pass</label>
+				<input class="js_param" type="text" name="pass" value="" />
+
+				<label for="ip">ip</label>
+				<input class="js_param" type="text" name="ip" value="dhcp" />
+
+				<label for="dns">dns</label>
+				<input class="js_param" type="text" name="dns" value="" />
+
+				<label for="gw">gw</label>
+				<input class="js_param" type="text" name="gw" value="" />
+
+				<button class="js_wifi_settigns" data-action="setWifi">Пременить</button>
+			</div>
+		</div>
+
+		<div class="control_group">
+			<h2>Информация</h2>
+			<button class="js_info_device" data-action="getDeviceInfo">Устройство</button>
+			<button class="js_info_system" data-action="getSystemInfo">Система</button>
+			<br />
+			<div>
+				<h4>Установить имя</h4>
+				<input class="js_param" type="text" name="name" value="" />
+				<button class="js_info_name" data-action="setDeviceName">Пременить</button>
+			</div>
+		</div>
+
+		<div class="control_group">
+			<h2>Для тестового стенда</h2>
+			<div>
+				<label for="timeout">timeout (ms)</label>
+				<input class="js_param" type="text" name="timeout" value="1000" />
+				<button class="js_test_mode_on" data-action="testModeOn">Запустить</button>
+				<button class="js_test_mode_off" data-action="testModeOff">Остановить</button>
+			</div>
+		</div>
+	</div>
+
+	<div class="display">
+		<h2>Ответ устройства:</h2>
+		<iframe name="display"> </iframe>
+	</div>
+</body>
+</html>

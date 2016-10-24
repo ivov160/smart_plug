@@ -12,8 +12,19 @@
 #include "user_power.h"
 #include "user_http_handlers.h"
 
-#include "asio_light_http.h"
+#include "mesh.h"
 #include "flash.h"
+#include "asio_light_http.h"
+
+#include <espressif/pwm.h>
+
+#define PWM_0_OUT_IO_MUX PERIPHS_IO_MUX_MTDI_U
+#define PWM_0_OUT_IO_NUM 12
+#define PWM_0_OUT_IO_FUNC  FUNC_GPIO12
+
+/*#define PWM_CHANNEL 3*/
+#define PWM_CHANNEL 1
+
 
 
 LOCAL os_timer_t info_timer;
@@ -29,6 +40,8 @@ static struct http_handler_rule handlers[] =
 	{ "/on", http_on_handler },
 	{ "/off", http_off_handler },
 	{ "/status", http_status_handler },
+	{ "/testModeOn",  http_start_test_mode},
+	{ "/testModeOff",  http_stop_test_mode},
 	{ NULL, NULL },
 };
 
@@ -38,6 +51,37 @@ LOCAL void system_info(void *p_args)
 	os_printf("system: Chip id = 0x%x\r\n", system_get_chip_id());
 	os_printf("system: CPU freq = %d MHz\r\n", system_get_cpu_freq());
 	os_printf("system: Free heap size = %d\r\n", system_get_free_heap_size());
+}
+
+static void test_flash_area_crc()
+{
+	struct wifi_info test = {
+		"test", "pass", 0, 0, 0, 0
+	};
+
+	write_wifi_info(&test, 0);
+
+	char* d = NULL;
+	*d = 's';
+}
+
+static void pwm_test_task(void *pvParameters)
+{
+	/*uint32_t duty = 0xFFFFFFFF / 4;*/
+	uint32_t duty = 50000/2;
+
+    /*uint32 pwm_duty_init[PWM_CHANNEL];*/
+    /*memset(pwm_duty_init, 0, PWM_CHANNEL*sizeof(uint32));*/
+    /*pwm_init(light_param.pwm_period, pwm_duty_init,PWM_CHANNEL,pwmio_info); */
+
+	uint32 pwmio_info[1][3]={ {PWM_0_OUT_IO_MUX,PWM_0_OUT_IO_FUNC,PWM_0_OUT_IO_NUM} };
+
+	/*pwm_init(1000, pwm_duty_init, PWM_CHANNEL, pwmio_info);*/
+	/*pwm_init(50000, &duty, PWM_CHANNEL, pwmio_info);*/
+	pwm_init(50000, &duty, PWM_CHANNEL, pwmio_info);
+	pwm_start();
+
+    vTaskDelete(NULL);
 }
 
 void user_init(void)
@@ -59,6 +103,9 @@ void user_init(void)
 	os_timer_arm(&info_timer, 4000, true);
 
 	init_layout();
+	/*test_flash_area_crc();*/
+
+	/*xTaskCreate(pwm_test_task, "pwm_test_task", 10, NULL, 0, NULL);*/
 
 	struct wifi_info main_wifi;
 	memset(&main_wifi, 0, sizeof(struct wifi_info));
@@ -83,6 +130,7 @@ void user_init(void)
 		start_ap_wifi(&info);
 	}
 	asio_webserver_start(handlers);
+	/*asio_mesh_start();*/
 
 	uint32_t end_time = system_get_time();
 	os_printf("time: system up by: %umks\n", (end_time - start_time));
