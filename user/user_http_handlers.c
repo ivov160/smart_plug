@@ -13,6 +13,9 @@
 
 #include "lwip/ip_addr.h"
 
+#include <stdlib.h>
+#include <ctype.h>
+
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
 #define INITIATOR_TIMER 1000
@@ -21,6 +24,26 @@
 static os_timer_t wifi_connect_timer;
 
 static xQueueHandle scan_callback_initiators  = NULL;
+
+char* make_lower(const char* str)
+{
+	char* low_case = NULL;
+	if(str != NULL)
+	{
+		low_case = (char*) zalloc(strlen(str));
+
+		char* target_ptr = low_case;
+		const char* ptr = str;
+
+		while(ptr && *ptr != '\0')
+		{
+			*target_ptr = tolower(*ptr);
+			++ptr;
+			++target_ptr;
+		}
+	}
+	return low_case;
+}
 
 static void wifi_connect_callback(void *p_args)
 {
@@ -412,58 +435,152 @@ int http_get_wifi_error_handler(struct query *query)
 
 int http_on_handler(struct query *query)
 {
-	power_up();
+	const char* type = query_get_param("type", query, REQUEST_GET);
+	char* lower_type = make_lower(type);
 
-	cJSON *json_root = cJSON_CreateObject();
-	cJSON_AddBoolToObject(json_root, "success", true);
-	char* data = cJSON_Print(json_root);
+	if(lower_type == NULL || strncmp(lower_type, "string", STATIC_STRLEN("string")) == 0)
+	{
+		power_up();
+		query_response_status(200, query);
+		query_response_header("Content-Type", "text/html", query);
+		query_response_body("success", STATIC_STRLEN("success"), query);
+	}
+	else if(lower_type != NULL && strncmp(lower_type, "bool", STATIC_STRLEN("bool")) == 0)
+	{
+		power_up();
+		query_response_status(200, query);
+		query_response_header("Content-Type", "text/html", query);
+		query_response_body("255", STATIC_STRLEN("255"), query);
+	}
+	else if(lower_type != NULL && strncmp(lower_type, "json", STATIC_STRLEN("json")) == 0)
+	{
+		power_up();
 
-	query_response_status(200, query);
-	query_response_header("Content-Type", "application/json", query);
-	query_response_body(data, strlen(data), query);
+		cJSON *json_root = cJSON_CreateObject();
+		cJSON_AddBoolToObject(json_root, "success", true);
+		char* data = cJSON_Print(json_root);
 
-	cJSON_Delete(json_root);
-	free(data);
+		query_response_status(200, query);
+		query_response_header("Content-Type", "application/json", query);
+		query_response_body(data, strlen(data), query);
+
+		cJSON_Delete(json_root);
+		free(data);
+	}
+	else
+	{
+		query_response_status(400, query);
+	}
+
+	if(lower_type != NULL)
+	{
+		free(lower_type);
+	}
 
 	return 1;
 }
 
 int http_off_handler(struct query *query)
 {
-	power_down();
+	const char* type = query_get_param("type", query, REQUEST_GET);
+	char* lower_type = make_lower(type);
 
-	cJSON *json_root = cJSON_CreateObject();
-	cJSON_AddBoolToObject(json_root, "success", true);
-	char* data = cJSON_Print(json_root);
+	if(lower_type == NULL || strncmp(lower_type, "string", STATIC_STRLEN("string")) == 0)
+	{
+		power_down();
+		query_response_status(200, query);
+		query_response_header("Content-Type", "text/html", query);
+		query_response_body("success", STATIC_STRLEN("success"), query);
+	}
+	else if(lower_type != NULL && strncmp(lower_type, "bool", STATIC_STRLEN("bool")) == 0)
+	{
+		power_down();
+		query_response_status(200, query);
+		query_response_header("Content-Type", "text/html", query);
+		query_response_body("255", STATIC_STRLEN("255"), query);
+	}
+	else if(lower_type != NULL && strncmp(lower_type, "json", STATIC_STRLEN("json")) == 0)
+	{
+		power_down();
 
-	query_response_status(200, query);
-	query_response_header("Content-Type", "application/json", query);
-	query_response_body(data, strlen(data), query);
+		cJSON *json_root = cJSON_CreateObject();
+		cJSON_AddBoolToObject(json_root, "success", true);
+		char* data = cJSON_Print(json_root);
 
-	cJSON_Delete(json_root);
-	free(data);
+		query_response_status(200, query);
+		query_response_header("Content-Type", "application/json", query);
+		query_response_body(data, strlen(data), query);
+
+		cJSON_Delete(json_root);
+		free(data);
+	}
+	else
+	{
+		query_response_status(400, query);
+	}
+
+	if(lower_type != NULL)
+	{
+		free(lower_type);
+	}
 
 	return 1;
 }
 
 int http_status_handler(struct query *query)
 {
-	cJSON *json_root = cJSON_CreateObject();
-	cJSON_AddBoolToObject(json_root, "success", true);
+	bool status = power_status() == 1;
 
-	cJSON *json_data = cJSON_CreateObject();
-	cJSON_AddItemToObject(json_root, "data", json_data);
+	const char* type = query_get_param("type", query, REQUEST_GET);
+	char* lower_type = make_lower(type);
 
-	cJSON_AddBoolToObject(json_data, "power", power_status() == 1);
+	if(lower_type == NULL || strncmp(lower_type, "string", STATIC_STRLEN("string")) == 0)
+	{
+		query_response_status(200, query);
+		query_response_header("Content-Type", "text/html", query);
+		query_response_body(status ? "on" : "off", STATIC_STRLEN(status ? "on" : "off"), query);
+	}
+	else if(lower_type != NULL && strncmp(lower_type, "bool", STATIC_STRLEN("bool")) == 0)
+	{
+		query_response_status(200, query);
+		query_response_header("Content-Type", "text/html", query);
+		if(status)
+		{
+			query_response_body("255", STATIC_STRLEN("255"), query);
+		}
+		else
+		{
+			query_response_body("0", 1, query);
+		}
+	}
+	else if(lower_type != NULL && strncmp(lower_type, "json", STATIC_STRLEN("json")) == 0)
+	{
+		cJSON *json_root = cJSON_CreateObject();
+		cJSON_AddBoolToObject(json_root, "success", true);
 
-	char* data = cJSON_Print(json_root);
+		cJSON *json_data = cJSON_CreateObject();
+		cJSON_AddItemToObject(json_root, "data", json_data);
 
-	query_response_status(200, query);
-	query_response_header("Content-Type", "application/json", query);
-	query_response_body(data, strlen(data), query);
+		cJSON_AddBoolToObject(json_data, "power", status);
 
-	cJSON_Delete(json_root);
-	free(data);
+		char* data = cJSON_Print(json_root);
+
+		query_response_status(200, query);
+		query_response_header("Content-Type", "application/json", query);
+		query_response_body(data, strlen(data), query);
+
+		cJSON_Delete(json_root);
+		free(data);
+	}
+	else
+	{
+		query_response_status(400, query);
+	}
+
+	if(lower_type != NULL)
+	{
+		free(lower_type);
+	}
 
 	return 1;
 }

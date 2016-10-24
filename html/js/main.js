@@ -1,5 +1,5 @@
 $(function(){
-	function handle($selector) {
+	function handle($selector, type) {
 
 		ip = function() {
 			return $('.js_ip').val();
@@ -9,27 +9,11 @@ $(function(){
 		$selector.on('click', function($event) {
 			var __this = this,
 			$elem = $(__this),
+			method = (!type ? "GET" : type),
 			action = $elem.data('action'),
 			url = 'http://' + ip() + '/' + action;
 
-			var $form = $('<form target="display" action="' + url + '" method="GET" />').appendTo($('body')).submit().remove();
-		});
-	};
-
-	function post_handle($selector) {
-
-		ip = function() {
-			return $('.js_ip').val();
-		}
-
-		var _this = this;
-		$selector.on('click', function($event) {
-			var __this = this,
-			$elem = $(__this),
-			action = $elem.data('action'),
-			url = 'http://' + ip() + '/' + action;
-
-			var $form = $('<form target="display" action="' + url + '" method="POST" />');
+			var $form = $('<form target="display" action="' + url + '" method="' + method + '" />');
 
 			$elem.closest('div').find('.js_param').each(function(index, node) {
 				$n = $(node);
@@ -54,9 +38,9 @@ $(function(){
 			new handle($('.js_wifi_scan'));
 			new handle($('.js_test_mode_off'));
 
-			new post_handle($('.js_wifi_settigns'));
-			new post_handle($('.js_info_name'));
-			new post_handle($('.js_test_mode_on'));
+			new handle($('.js_wifi_settigns'), 'POST');
+			new handle($('.js_info_name'), 'POST');
+			new handle($('.js_test_mode_on'), 'POST');
 		}
 
 		_this.init();
