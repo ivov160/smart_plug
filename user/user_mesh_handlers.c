@@ -12,8 +12,9 @@ void mesh_keep_alive_handler(struct mesh_ctx* ctx, struct mesh_sender_info* send
 		if(msg->data_size == sizeof(struct mesh_device_info))
 		{
 			struct mesh_device_info* info = (struct mesh_device_info*) msg->data;
-			os_printf("mesh[mesh_keep_alive_handler]: received info device_id: %d, device_type: %d, device_ip: %i, device_name: %s\n", 
-					info->id, info->type, info->ip, info->name);
+			os_printf("mesh[mesh_keep_alive_handler]: received info \n");
+			/*os_printf("mesh[mesh_keep_alive_handler]: received info device_id: %d, device_type: %d, device_ip: %d, device_name: %s\n", */
+					/*info->id, info->type, info->ip, info->name);*/
 		}
 		else
 		{

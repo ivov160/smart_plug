@@ -42,7 +42,7 @@ void send_keep_alive(struct mesh_ctx* mesh, struct mesh_device_info* info)
 	}
 	else if(msg_size != sended_data)
 	{
-		LOG("sending less data msg_size: %lu, sended: %ui\n", msg_size, sended_data);
+		LOG("sending less data msg_size: %u, sended: %u\n", msg_size, sended_data);
 	}
 	free_message(msg);
 }
@@ -61,7 +61,7 @@ void send_request_devices_info(struct mesh_ctx* mesh)
 	}
 	else if(msg_size != sended_data)
 	{
-		LOG("sending less data msg_size: %lu, sended: %ui\n", msg_size, sended_data);
+		LOG("sending less data msg_size: %u, sended: %u\n", msg_size, sended_data);
 	}
 	free_message(msg);
 }
@@ -80,7 +80,7 @@ void send_device_info(struct mesh_ctx* mesh, struct mesh_device_info* info, uint
 	}
 	else if(msg_size != sended_data)
 	{
-		LOG("sending less data msg_size: %lu, sended: %ui\n", msg_size, sended_data);
+		LOG("sending less data msg_size: %u, sended: %u\n", msg_size, sended_data);
 	}
 	free_message(msg);
 }
@@ -99,7 +99,7 @@ void send_request_device_info_confirm(struct mesh_ctx* mesh, uint32_t dst)
 	}
 	else if(msg_size != sended_data)
 	{
-		LOG("sending less data msg_size: %lu, sended: %ui\n", msg_size, sended_data);
+		LOG("sending less data msg_size: %u, sended: %u\n", msg_size, sended_data);
 	}
 	free_message(msg);
 }

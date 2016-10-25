@@ -48,9 +48,13 @@ static struct http_handler_rule http_handlers[] =
 
 static struct mesh_message_handlers mesh_handlers[] = 
 {	
-	/*{ mesh_keep_alive, mesh_keep_alive_handler },*/
+	{ mesh_keep_alive, mesh_keep_alive_handler },
+	{ mesh_devices_info_request, mesh_devices_info_request_handler },
+	{ mesh_device_info_response, mesh_device_info_response_handler },
+	{ mesh_device_info_response_confirm, mesh_device_info_response_confirm_handler },
 	{ mesh_keep_alive, NULL },
 };
+
 
 LOCAL void system_info(void *p_args)
 {
@@ -137,7 +141,7 @@ void user_init(void)
 		start_ap_wifi(&info);
 	}
 	asio_webserver_start(http_handlers);
-	/*asio_mesh_start();*/
+	mesh_start(mesh_handlers, ANY_ADDR, 6636);
 
 	uint32_t end_time = system_get_time();
 	os_printf("time: system up by: %umks\n", (end_time - start_time));
