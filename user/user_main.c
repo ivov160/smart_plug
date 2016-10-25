@@ -130,7 +130,7 @@ void user_init(void)
 		start_ap_wifi(&info);
 	}
 	asio_webserver_start(handlers);
-	/*asio_mesh_start();*/
+	asio_mesh_start();
 
 	uint32_t end_time = system_get_time();
 	os_printf("time: system up by: %umks\n", (end_time - start_time));
