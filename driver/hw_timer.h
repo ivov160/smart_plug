@@ -29,6 +29,14 @@
 extern "C" {
 #endif
 
+/** \defgroup Driver_APIs Driver APIs
+  * @brief Driver APIs
+  */
+
+/** @addtogroup Driver_APIs
+  * @{
+  */
+
 /** \defgroup HW_Timer_APIs Hardware timer APIs
   * @brief Hardware timer APIs
   *
@@ -73,6 +81,10 @@ void hw_timer_arm(uint32 val);
   * @return  null
   */
 void hw_timer_set_func(void (* user_hw_timer_cb_set)(void));
+
+/**
+  * @}
+  */
 
 /**
   * @}

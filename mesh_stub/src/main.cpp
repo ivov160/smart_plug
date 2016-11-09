@@ -36,11 +36,11 @@ void mesh_devices_info_request_handler(struct mesh_ctx* ctx, struct mesh_sender_
 			mesh_device_info info;
 			info.type = 3;
 			info.id = 0;
-			snprintf(info.name, DEVICE_NAME_SIZE, "PC-stub");
+			snprintf(info.name, MESH_DEVICE_NAME_SIZE, "PC-stub");
 			info.ip = 0xC0A800; //192.168.0.110
 
 			std::cout << "mesh[mesh_devices_info_request_handler]: send_device_info called" << std::endl;
-			send_device_info(ctx, &info, sender->ip);
+			mesh_send_device_info(ctx, &info, sender->ip);
 		}
 		else
 		{
@@ -69,7 +69,7 @@ void mesh_device_info_response_handler(struct mesh_ctx* ctx, struct mesh_sender_
 			printf("mesh[mesh_device_info_response_handler]: received info device_id: %d, device_type: %d, device_ip: %s, device_name: %s, sender: %s\n", 
 					info->id, info->type, inet_ntoa(addr), info->name, inet_ntoa(sender_addr));
 
-			send_request_device_info_confirm(ctx, sender->ip);
+			mesh_send_request_device_info_confirm(ctx, sender->ip);
 		}
 		else
 		{

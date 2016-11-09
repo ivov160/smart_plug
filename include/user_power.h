@@ -4,6 +4,17 @@
 #include "esp_common.h"
 
 /**
+ * @defgroup user User 
+ * @defgroup user_power User power
+ * @brief Пользовательский код для работы с нагрузкой
+ *
+ * @addtogroup user
+ * @{
+ * @addtogroup user_power 
+ * @{
+ */
+
+/**
  * @brief Функция для инициализации управления питанием
  */
 void power_init();
@@ -36,6 +47,11 @@ void power_start_test_mode(uint32_t ms);
  * @brief Функция для остановки тестового режима работы
  */
 void power_stop_test_mode();
+
+/**
+ * @}
+ * @}
+ */
 
 
 #endif

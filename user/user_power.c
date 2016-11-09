@@ -2,8 +2,29 @@
 
 #include "gpio.h"
 
+/**
+ * @defgroup user User 
+ * @defgroup user_power User power
+ *
+ * @addtogroup user
+ * @{
+ * @addtogroup user_power 
+ * @{
+ */
+
+/** 
+ * @brief Нога для управлением нагрузкой plug
+ */
 #define POWER_GPIO 14
+
+/**
+ * @brief Регистр для настройки используемого вывода
+ */
 #define POWER_GPIO_MUX PERIPHS_IO_MUX_MTMS_U
+
+/**
+ * @brief Используемая функция указанного вывода
+ */
 #define POWER_GPIO_FUNC FUNC_GPIO14
 
 static os_timer_t test_mode_timer;
@@ -48,3 +69,8 @@ void power_stop_test_mode()
 	os_timer_disarm(&test_mode_timer);
 	power_down();
 }
+
+/**
+ * @}
+ * @}
+ */

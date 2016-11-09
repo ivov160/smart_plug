@@ -1,10 +1,18 @@
 #include "user_mesh.h"
-#include "message.h"
+#include "../mesh/mesh_message.h"
 
-#include "../flash/flash.h"
-#include "wifi_station.h"
+#include "../data/data.h"
+#include "user_wifi.h"
 
-#define RECV_BUF_SIZE 1024
+/**
+ * @defgroup user User 
+ * @defgroup user_mesh User mesh
+ *
+ * @addtogroup user
+ * @{
+ * @addtogroup user_mesh
+ * @{
+ */
 
 static os_timer_t mesh_keep_alive_timer;
 
@@ -14,16 +22,16 @@ static void mesh_keep_alive_timer_handler(void *p_args)
 	{
 		struct mesh_ctx* ctx = (struct mesh_ctx*) p_args;
 
-		struct custom_name device_name;
-		memset(&device_name, 0, sizeof(struct custom_name));
+		struct data_custom_name device_name;
+		memset(&device_name, 0, sizeof(struct data_custom_name));
 
-		struct device_info device_info;
-		memset(&device_info, 0, sizeof(struct device_info));
+		struct data_device_info device_info;
+		memset(&device_info, 0, sizeof(struct data_device_info));
 
 		struct ip_info device_ip;
 		memset(&device_ip, 0, sizeof(struct ip_info));
 
-		if(read_custom_name(&device_name) && read_current_device(&device_info) && get_wifi_ip_info(&device_ip))
+		if(data_read_custom_name(&device_name) && data_read_current_device(&device_info) && wifi_get_ip(&device_ip))
 		{
 			struct mesh_device_info mesh_device_info;
 			memset(&mesh_device_info, 0, sizeof(struct mesh_device_info));
@@ -31,9 +39,9 @@ static void mesh_keep_alive_timer_handler(void *p_args)
 			mesh_device_info.id = device_info.device_id;
 			mesh_device_info.type = device_info.device_type;
 			mesh_device_info.ip = device_ip.ip.addr;
-			memcpy(mesh_device_info.name, device_name.data, DEVICE_NAME_SIZE);
+			memcpy(mesh_device_info.name, device_name.data, MESH_DEVICE_NAME_SIZE);
 
-			send_keep_alive(ctx, &mesh_device_info);
+			mesh_send_keep_alive(ctx, &mesh_device_info);
 		}
 		else
 		{
@@ -55,9 +63,9 @@ static void asio_mesh_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf 
 
 		if(p != NULL)
 		{
-			if(p->tot_len > RECV_BUF_SIZE)
+			if(p->tot_len > MESH_RECV_BUF_SIZE)
 			{
-				os_printf("mesh[asio_mesh_recv_callback]: received data too big, total: %d, max: %d\n", p->tot_len, RECV_BUF_SIZE);
+				os_printf("mesh[asio_mesh_recv_callback]: received data too big, total: %d, max: %d\n", p->tot_len, MESH_RECV_BUF_SIZE);
 			}
 			else
 			{
@@ -72,8 +80,8 @@ static void asio_mesh_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf 
 				else
 				{
 					struct mesh_message* msg = (struct mesh_message*) p->payload;
-					os_printf("mesh[asio_mesh_recv_callback]: message.magic: %d, message.command: %d, message.sender_id: %d, message.data_size: %d\n", 
-							msg->magic, msg->command, msg->sender_id, msg->data_size);
+					os_printf("mesh[asio_mesh_recv_callback]: message.magic: %d, message.command: %d, message.data_size: %d\n", 
+							msg->magic, msg->command, msg->data_size);
 
 					struct mesh_sender_info sender;
 					/*sender.ip = addr->addr;*/
@@ -94,6 +102,9 @@ static void asio_mesh_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf 
 	}
 }
 
+/**
+ * @brief Инцилазация mesh
+ */
 static void asio_init_mesh_ctx(struct mesh_ctx* ctx, uint32_t addr, uint32_t port)
 {
 	LWIP_ASSERT("mesh[asio_init_mesh_ctx]: udp_new failed", ctx != NULL);
@@ -176,9 +187,15 @@ uint32_t mesh_send_data(struct mesh_ctx* ctx, void* data, uint32_t size, uint32_
 	return sended;
 }
 
+// для LwIP не нужно, по этому просто заглушк
 uint32_t mesh_receive_data(struct mesh_ctx* ctx, void* data, uint32_t size)
 {
 	uint32_t received = 0;
 	LOG("mesh[mesh_receive_data]: not implemented\n");
 	return received;
 }
+
+/**
+ * @}
+ * @}
+ */

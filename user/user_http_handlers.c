@@ -1,8 +1,8 @@
 #include "user_http_handlers.h"
 #include "user_power.h"
-#include "wifi_station.h"
+#include "user_wifi.h"
 
-#include "../flash/flash.h"
+#include "../data/data.h"
 
 #include "cJSON.h"
 #include "esp_common.h"
@@ -15,6 +15,16 @@
 
 #include <stdlib.h>
 #include <ctype.h>
+
+/**
+ * @defgroup user User 
+ * @defgroup user_light_http User light_http
+ *
+ * @addtogroup user
+ * @{
+ * @addtogroup user_light_http 
+ * @{
+ */
 
 #define STATIC_STRLEN(x) (sizeof(x) - 1)
 
@@ -45,26 +55,24 @@ char* make_lower(const char* str)
 	return low_case;
 }
 
-static void wifi_connect_callback(void *p_args)
-{
-	struct wifi_info* info = (struct wifi_info*) p_args;
-	if(!start_station_wifi(info, true))
-	{
-		os_printf("http: failed reconect to new wifi station\n");
-	}
-	free(info);
-}
-
 static void wifi_reconnect_callback(struct query* query, void* data)
 {
-	struct wifi_info* info = (struct wifi_info*) data;
-	if(!start_station_wifi(info, true))
+	struct data_wifi_info* info = (struct data_wifi_info*) data;
+	if(!wifi_start_station(info, true))
 	{
 		os_printf("http: failed reconect to new wifi station\n");
 	}
 	free(info);
 }
 
+/**
+ * @bug Может произойти segmentation fault 
+ * Для получения query используется очередь, в которую добавляются указательи на query, ассоциированные с обрабатываемым запросом
+ * Но если connection закроется раньше чем данный callback сформирует ответ и пометит запрос как обработанный
+ * указатель будет не валидным.
+ * Решением является добавление в connection счетчика сылок (shared_ptr, но для C)
+ * @todo Реализовать счетчика сылок для query (shared_ptr<struct query>, но для C)
+ */
 static void http_scan_callback(void *args, STATUS status)
 {
 	uintptr_t item = 0;
@@ -150,15 +158,15 @@ int http_system_info_handler(struct query *query)
 int http_get_device_info_handler(struct query *query)
 {
 	struct ip_info ip_info;
-	struct device_info info;
-	struct custom_name name_info;
+	struct data_device_info info;
+	struct data_custom_name name_info;
 
-	memset(&name_info, 0, sizeof(struct custom_name));
-	memset(&info, 0, sizeof(struct device_info));
+	memset(&name_info, 0, sizeof(struct data_custom_name));
+	memset(&info, 0, sizeof(struct data_device_info));
 
 	cJSON *json_root = cJSON_CreateObject();
 
-	if(read_custom_name(&name_info) && read_current_device(&info) && get_wifi_ip_info(&ip_info))
+	if(data_read_custom_name(&name_info) && data_read_current_device(&info) && wifi_get_ip(&ip_info))
 	{
 		cJSON *json_data = cJSON_CreateObject();
 		cJSON_AddItemToObject(json_root, "data", json_data);
@@ -166,11 +174,11 @@ int http_get_device_info_handler(struct query *query)
 		char ip_print_buffer[4 * 4 + 1] = { 0 };
 		sprintf(ip_print_buffer, IPSTR, IP2STR(&ip_info.ip));
 
-		cJSON_AddNumberToObject(json_data, "powered", device_info_get_powered(&info));
-		cJSON_AddNumberToObject(json_data, "type", device_info_get_type_int(&info));
+		cJSON_AddNumberToObject(json_data, "powered", data_device_info_get_powered(&info));
+		cJSON_AddNumberToObject(json_data, "type", data_device_info_get_type_int(&info));
 
-		uint32_t length = strnlen(name_info.data, CUSTOM_NAME_SIZE);
-		if(length != 0 && length != CUSTOM_NAME_SIZE)
+		uint32_t length = strnlen(name_info.data, DATA_CUSTOM_NAME_SIZE);
+		if(length != 0 && length != DATA_CUSTOM_NAME_SIZE)
 		{
 			cJSON_AddStringToObject(json_data, "name", name_info.data);
 		}
@@ -243,14 +251,14 @@ int http_set_device_name_handler(struct query *query)
 	{
 		os_printf("http: new device name: `%s`\n", device_name);
 
-		int32_t device_name_size = strnlen(device_name, CUSTOM_NAME_SIZE - 1);
-		if(device_name_size < CUSTOM_NAME_SIZE - 1)
+		int32_t device_name_size = strnlen(device_name, DATA_CUSTOM_NAME_SIZE - 1);
+		if(device_name_size < DATA_CUSTOM_NAME_SIZE - 1)
 		{
-			struct custom_name name;
-			memset(&name, 0, sizeof(struct custom_name));
+			struct data_custom_name name;
+			memset(&name, 0, sizeof(struct data_custom_name));
 			memcpy(name.data, device_name, device_name_size);
 
-			if(write_custom_name(&name))
+			if(data_write_custom_name(&name))
 			{
 				result = 1;
 			}
@@ -283,16 +291,16 @@ int http_set_main_wifi_handler(struct query *query)
 {
 	int result = 0;
 
-	struct wifi_info* main_wifi = (struct wifi_info*) zalloc(sizeof(struct wifi_info));
+	struct data_wifi_info* main_wifi = (struct data_wifi_info*) zalloc(sizeof(struct data_wifi_info));
 
 	const char* param = query_get_param("name", query, REQUEST_POST);
-	if(param != NULL && strnlen(param, WIFI_NAME_SIZE) < WIFI_NAME_SIZE)
+	if(param != NULL && strnlen(param, DATA_WIFI_NAME_SIZE) < DATA_WIFI_NAME_SIZE)
 	{
-		memcpy(main_wifi->name, param, strnlen(param, WIFI_NAME_SIZE));
+		memcpy(main_wifi->name, param, strnlen(param, DATA_WIFI_NAME_SIZE));
 		param = query_get_param("pass", query, REQUEST_POST);
-		if(param != NULL && strnlen(param, WIFI_PASS_SIZE) < WIFI_PASS_SIZE)
+		if(param != NULL && strnlen(param, DATA_WIFI_PASS_SIZE) < DATA_WIFI_PASS_SIZE)
 		{
-			memcpy(main_wifi->pass, param, strnlen(param, WIFI_PASS_SIZE));
+			memcpy(main_wifi->pass, param, strnlen(param, DATA_WIFI_PASS_SIZE));
 			param = query_get_param("ip", query, REQUEST_POST);
 			if(param != NULL && strncmp(param, "dhcp", sizeof("dhcp") - 1) != 0)
 			{	// not dhcp
@@ -375,7 +383,7 @@ int http_set_main_wifi_handler(struct query *query)
 
 	if(result)
 	{
-		if(!write_main_wifi(main_wifi))
+		if(!data_write_main_wifi(main_wifi))
 		{
 			result = false;
 			os_printf("http: failed set station info\n");
@@ -396,8 +404,6 @@ int http_set_main_wifi_handler(struct query *query)
 	if(result)
 	{
 		query_register_after_response(query, wifi_reconnect_callback, (void*) main_wifi);
-		/*os_timer_setfn(&wifi_connect_timer, wifi_connect_callback, main_wifi);*/
-		/*os_timer_arm(&wifi_connect_timer, 500, false);*/
 	}
 
 	return 1;
@@ -632,4 +638,9 @@ int http_stop_test_mode(struct query *query)
 
 	return 1;
 }
+
+/**
+ * @}
+ * @}
+ */
 

@@ -1,4 +1,4 @@
-#include "message.h"
+#include "mesh_message.h"
 #include "mesh.h"
 
 #include <stdio.h>
@@ -28,7 +28,7 @@ void free_message(struct mesh_message* msg)
 	free(msg);
 }
 
-void send_keep_alive(struct mesh_ctx* mesh, struct mesh_device_info* info)
+void mesh_send_keep_alive(struct mesh_ctx* mesh, struct mesh_device_info* info)
 {
 	LOG("keep_alive broadcast\n");
 
@@ -47,7 +47,7 @@ void send_keep_alive(struct mesh_ctx* mesh, struct mesh_device_info* info)
 	free_message(msg);
 }
 
-void send_request_devices_info(struct mesh_ctx* mesh)
+void mesh_send_request_devices_info(struct mesh_ctx* mesh)
 {
 	LOG("send_request_devices_info\n");
 
@@ -66,7 +66,7 @@ void send_request_devices_info(struct mesh_ctx* mesh)
 	free_message(msg);
 }
 
-void send_device_info(struct mesh_ctx* mesh, struct mesh_device_info* info, uint32_t dst)
+void mesh_send_device_info(struct mesh_ctx* mesh, struct mesh_device_info* info, uint32_t dst)
 {
 	LOG("send_device_info\n");
 
@@ -85,7 +85,7 @@ void send_device_info(struct mesh_ctx* mesh, struct mesh_device_info* info, uint
 	free_message(msg);
 }
 
-void send_request_device_info_confirm(struct mesh_ctx* mesh, uint32_t dst)
+void mesh_send_request_device_info_confirm(struct mesh_ctx* mesh, uint32_t dst)
 {
 	LOG("send_request_device_info_confirm\n");
 

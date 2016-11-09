@@ -3,56 +3,16 @@
 
 #include "esp_common.h"
 #include "esp_libc.h"
-#include "user_config.h"
+#include "user_light_http_config.h"
+#include "light_http_config.h"
 
 /**
- * @brief Время на обработку запроса millisecond
+ * @defgroup light_http 
+ * @brief HTTP сервер
+ *
+ * @addtogroup light_http
+ * @{
  */
-#ifndef STOP_TIMER
-	#define STOP_TIMER 120000
-#endif
-
-/**
- * @brief Размер буфера приемки
- */
-#ifndef RECV_BUF_SIZE
-	#define RECV_BUF_SIZE 2048
-#endif
-
-/**
- * @brief Размер буфера отправки
- */
-#ifndef SEND_BUF_SIZE
-	#define SEND_BUF_SIZE 2048
-#endif
-
-/**
- * @brief размер буфера для рендера частей ответа сервера
- */
-#ifndef PRINT_BUFFER_SIZE
-	#define PRINT_BUFFER_SIZE 256
-#endif
-
-/**
- * @brief Порт для http
- */
-#ifndef WEB_SERVER_PORT
-	#define WEB_SERVER_PORT 80
-#endif
-
-/**
- * @brief Порт для https
- */
-#ifndef WEB_SERVER_SSL_PORT
-	#define WEB_SERVER_SSL_PORT 443
-#endif
-
-/**
- * @brief Максимальное количество одновременных подключений
- */
-#ifndef CONNECTION_POOL_SIZE
-	#define CONNECTION_POOL_SIZE 2
-#endif
 
 /**
  * @brief Контекст запроса
@@ -61,7 +21,21 @@ struct query;
 
 /** 
  * @brief Сигнатура обработчика запроса
- * Возвращает статус ответа ?
+ *
+ * Ответ указывает на формат ответа: 
+ * 1 - синхронный ответ
+ * 0 - асинхронный ответ
+ *
+ * Синхроннвый ответ - запрос помечается как обработанный и при первем же
+ * вызове poll, данные будут отправленны, а соеденение закрыто
+ *
+ * Асинхроннвый ответ - запрос остается в работе и
+ * в каждом вызове poll проверяется его завершенность,
+ * как только запрос будет помечен обработанным, запрос финализируется.
+ * Если завпрос в течении отведенного кол-ва попыток (HTTPD_MAX_RETRIES)
+ * не будет обработан, соеденение разрывается.
+ *
+ * @see query_done
  */
 typedef int (* cgi_handler)(struct query *query);
 
@@ -72,10 +46,12 @@ typedef void (* response_done_callback)(struct query *query, void* user_data);
 
 /**
  * @brief Правило обработки урла
+ * @note В данный момент точное совпадение path (strcmp)
+ * @todo Добавить маски в uri
  */
 struct http_handler_rule
 {
-	const char* uri;		///< url для обработки (доступные маски ???)
+	const char* uri;		///< url для обработки 
 	cgi_handler handler;	///< функция для обработки запроса
 };
 
@@ -165,6 +141,10 @@ void asio_webserver_start(struct http_handler_rule *handlers);
  * @brief Метод для остановки http сервера
  */
 int8_t asio_webserver_stop(void);
+
+/**
+ * @}
+ */
 
 
 #endif

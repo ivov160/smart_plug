@@ -1,9 +1,18 @@
 #include "user_mesh_handlers.h"
-#include "../mesh/message.h"
-#include "device_info.h"
+#include "../mesh/mesh_message.h"
+#include "../mesh/mesh_device_info.h"
 
-#include "../flash/flash.h"
-#include "wifi_station.h"
+#include "../data/data.h"
+#include "user_wifi.h"
+
+/**
+ * @defgroup user User 
+ * @defgroup user_mesh User mesh
+ *
+ * @addtogroup user
+ * @addtogroup user_mesh
+ * @{
+ */
 
 void mesh_keep_alive_handler(struct mesh_ctx* ctx, struct mesh_sender_info* sender, struct mesh_message* msg)
 {
@@ -31,16 +40,16 @@ void mesh_devices_info_request_handler(struct mesh_ctx* ctx, struct mesh_sender_
 {
 	if(msg != NULL)
 	{
-		struct custom_name device_name;
-		memset(&device_name, 0, sizeof(struct custom_name));
+		struct data_custom_name device_name;
+		memset(&device_name, 0, sizeof(struct data_custom_name));
 
-		struct device_info device_info;
-		memset(&device_info, 0, sizeof(struct device_info));
+		struct data_device_info device_info;
+		memset(&device_info, 0, sizeof(struct data_device_info));
 
 		struct ip_info device_ip;
 		memset(&device_ip, 0, sizeof(struct ip_info));
 
-		if(read_custom_name(&device_name) && read_current_device(&device_info) && get_wifi_ip_info(&device_ip))
+		if(data_read_custom_name(&device_name) && data_read_current_device(&device_info) && wifi_get_ip(&device_ip))
 		{
 			struct mesh_device_info mesh_device_info;
 			memset(&mesh_device_info, 0, sizeof(struct mesh_device_info));
@@ -48,9 +57,9 @@ void mesh_devices_info_request_handler(struct mesh_ctx* ctx, struct mesh_sender_
 			mesh_device_info.id = device_info.device_id;
 			mesh_device_info.type = device_info.device_type;
 			mesh_device_info.ip = device_ip.ip.addr;
-			memcpy(mesh_device_info.name, device_name.data, DEVICE_NAME_SIZE);
+			memcpy(mesh_device_info.name, device_name.data, MESH_DEVICE_NAME_SIZE);
 
-			send_device_info(ctx, &mesh_device_info, sender->ip);
+			mesh_send_device_info(ctx, &mesh_device_info, sender->ip);
 		}
 		else
 		{
@@ -73,7 +82,7 @@ void mesh_device_info_response_handler(struct mesh_ctx* ctx, struct mesh_sender_
 			os_printf("mesh[mesh_device_info_response_handler]: received info device_id: %d, device_type: %d, device_ip: %i, device_name: %s\n", 
 					info->id, info->type, info->ip, info->name);
 
-			send_request_device_info_confirm(ctx, sender->ip);
+			mesh_send_request_device_info_confirm(ctx, sender->ip);
 		}
 		else
 		{
@@ -97,3 +106,8 @@ void mesh_device_info_response_confirm_handler(struct mesh_ctx* ctx, struct mesh
 		os_printf("mesh[mesh_device_info_response_confirm_handler]: mesh_message is null\n");
 	}
 }
+
+/**
+ * @}
+ * @}
+ */

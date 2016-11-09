@@ -20,7 +20,7 @@ set(sources
 	${CMAKE_SOURCE_DIR}/src/mesh_platform.cpp
 )
 
-include_directories(${public_includes})
+include_directories(${public_includes} ./src ../mesh )
 add_executable(${PROJECT_NAME} ${sources})
 target_link_libraries(${PROJECT_NAME} ev mesh)
 

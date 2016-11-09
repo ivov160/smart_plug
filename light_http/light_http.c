@@ -1,4 +1,4 @@
-#include "asio_light_http.h"
+#include "light_http.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -11,49 +11,17 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifndef STOP_TIMER
-	/*#define STOP_TIMER 120000*/
-	#define STOP_TIMER 10000
-#endif
-
-#ifndef CONNECTION_POOL_SIZE
-	#define CONNECTION_POOL_SIZE 2
-#endif
-
-#define SERVER_VERSION 0.1
-
-/**< Find the maximum of 2 numbers. */
-#define max(a,b) ((a)>(b)?(a):(b))  
+/**
+ * @defgroup light_http 
+ * @brief HTTP сервер
+ *
+ * @addtogroup light_http
+ * @{
+ */
 
 /**
- * @brief Макрос для подсчета длины const char* во время компиляции
+ * @brief Find the maximum of 2 numbers. 
  */
-#define STATIC_STRLEN(x) (sizeof(x) - 1)
-
-#ifndef HTTPD_TCP_PRIO
-	#define HTTPD_TCP_PRIO TCP_PRIO_MIN
-#endif
-
-#ifndef HTTPD_DEBUG
-	#define HTTPD_DEBUG LWIP_DBG_ON
-	/*#define HTTPD_DEBUG 0xFF*/
-#endif
-
-#ifndef HTTPD_MAX_RETRIES
-	#define HTTPD_MAX_RETRIES 15
-#endif
-
-/** The poll delay is X*500ms */
-#ifndef HTTPD_POLL_INTERVAL
-	#define HTTPD_POLL_INTERVAL 1
-#endif
-
-/**
- * @brief версия сервера
- */
-#define SERVER_VERSION 0.1
-
-/**< Find the maximum of 2 numbers. */
 #define max(a,b) ((a)>(b)?(a):(b))  
 
 /**
@@ -195,7 +163,7 @@ const char* query_get_uri(struct query* query)
 	return query->uri;
 }
 
-LOCAL bool query_response_append(const char* data, uint32_t size, struct query* query)
+static bool query_response_append(const char* data, uint32_t size, struct query* query)
 {
 	if(query != NULL)
 	{
@@ -864,6 +832,10 @@ static err_t asio_http_poll(void *arg, struct tcp_pcb *pcb)
 	return ERR_OK;
 }
 
+/**
+ * @todo Реализовать чтение данных в несколько этапов. В данный момент данные читаются одним куском,
+ * но LwIP не всегда дает все данные в буфере
+ */
 static err_t asio_http_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
 {
 	struct http_ctx* ctx = (struct http_ctx*) arg;
@@ -921,8 +893,10 @@ static err_t asio_http_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_
 	ctx->receive_buffer_size = p->len;
 	ctx->pcb = pcb;
 
-	/*portBASE_TYPE call_yield = pdFalse;*/
-	/*if(!xQueueSendFromISR(socket_queue, &ctx, &call_yield))*/
+	/**
+	 * @todo Избавиться от очереди для экономии памяти, 
+	 * всю логику по управленю соеденением реализовать в asio_http_poll в виде конечного автомата
+	 */
 	uintptr_t item = (uintptr_t)ctx;
 	if(!xQueueSend(socket_queue, &item, STOP_TIMER / portTICK_RATE_MS))
 	{
@@ -938,11 +912,6 @@ static err_t asio_http_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_
 		tcp_recved(pcb, p->tot_len);
 		pbuf_free(p);
 	}
-
-	/*err_t code = http_perform_request(ctx);*/
-	/*if(code == ERR_OK)*/
-	/*{*/
-	/*}*/
 	return ERR_OK;
 }
 
@@ -1084,3 +1053,7 @@ int8_t asio_webserver_stop(void)
 		tcp_close(listen_pcb);
 	}
 }
+
+/**
+ * @}
+ */

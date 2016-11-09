@@ -10,6 +10,13 @@
 #include <unistd.h>
 #include <resolv.h>
 
+
+/**
+ * @defgroup mesh_stub Mesh stub
+ * @addtogroup mesh_stub
+ * @{
+ */
+
 static bool keep_alive = true;
 
 static void emit_stub_message(struct ev_loop *loop, ev_periodic *w, int revents)
@@ -27,16 +34,16 @@ static void emit_stub_message(struct ev_loop *loop, ev_periodic *w, int revents)
 				mesh_device_info info;
 				info.type = 3;
 				info.id = 0;
-				snprintf(info.name, DEVICE_NAME_SIZE, "PC-stub");
+				snprintf(info.name, MESH_DEVICE_NAME_SIZE, "PC-stub");
 				info.ip = 0xC0A800; //192.168.0.110
 
 				LOG("keep_alive message send\n");
-				send_keep_alive(ctx, &info);
+				mesh_send_keep_alive(ctx, &info);
 			}
 			else
 			{
 				LOG("request_devices message send\n");
-				send_request_devices_info(ctx);
+				mesh_send_request_devices_info(ctx);
 			}
 			keep_alive = !keep_alive;
 		}
@@ -184,4 +191,8 @@ uint32_t mesh_receive_data(struct mesh_ctx* ctx, void* data, uint32_t size)
 	}
 	return readed_size;
 }
+
+/**
+ * @}
+ */
 

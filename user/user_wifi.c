@@ -1,4 +1,4 @@
-#include "wifi_station.h"
+#include "user_wifi.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -11,16 +11,15 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#define MAX_AP_CONNECTION 10
-#define PASSWORD_LENGTH 8
-#define MAX_SSID_LENGTH 32
-
-#define WIFI_EVENT_HANDLER_STACK_SIZE 128
-#define WIFI_EVENT_HANDLER_PRIO DEFAULT_TASK_PRIO 
-#define WIFI_EVENT_WAIT_TIMER 10000
-#define WIFI_EVENT_POOL_SIZE 10
-
-#define WIFI_STATION_CHECK_TIMER 5000
+/**
+ * @defgroup user User 
+ * @defgroup user_wifi User wifi
+ *
+ * @addtogroup user
+ * @{
+ * @addtogroup user_wifi
+ * @{
+ */
 
 static const char* reasons[] = 
 {
@@ -275,13 +274,13 @@ static void generate_password(char* password, uint32_t size)
 }
 
 
-bool start_station_wifi(struct wifi_info* info, bool connect)
+bool wifi_start_station(struct data_wifi_info* info, bool connect)
 {
 	wifi_event_task_start();
-	return set_station_info(info, connect);
+	return wifi_set_station_info(info, connect);
 }
 
-bool start_ap_wifi(struct device_info* info)
+bool wifi_start_ap(struct data_device_info* info)
 {
 	bool result = true;
 	wifi_event_task_start();
@@ -295,7 +294,7 @@ bool start_ap_wifi(struct device_info* info)
 		}
 		else
 		{
-			const char* device_type_str = device_info_get_type(info);
+			const char* device_type_str = data_device_info_get_type(info);
 			char ssid[MAX_SSID_LENGTH] = { 0 };
 			char password[PASSWORD_LENGTH + 1] = { 0 };
 
@@ -336,13 +335,13 @@ bool start_ap_wifi(struct device_info* info)
 	}
 	else
 	{
-		os_printf("wifi: device_info is null\n");
+		os_printf("wifi: data_device_info is null\n");
 		result = false;
 	}
 	return result;
 }
 
-void stop_wifi(bool cleanup)
+void wifi_stop(bool cleanup)
 {
 	if(cleanup)
 	{
@@ -376,7 +375,7 @@ void stop_wifi(bool cleanup)
 	}
 }
 
-bool set_station_info(struct wifi_info* info, bool connect)
+bool wifi_set_station_info(struct data_wifi_info* info, bool connect)
 {
 	bool result = true;
 	if(info != NULL)
@@ -385,8 +384,8 @@ bool set_station_info(struct wifi_info* info, bool connect)
 		memset(&config, 0, sizeof(struct station_config));
 
 		config.bssid_set = 0;
-		memcpy(config.ssid, info->name, strnlen(info->name, WIFI_NAME_SIZE));
-		memcpy(config.password, info->pass, strnlen(info->pass, WIFI_PASS_SIZE));
+		memcpy(config.ssid, info->name, strnlen(info->name, DATA_WIFI_NAME_SIZE));
+		memcpy(config.password, info->pass, strnlen(info->pass, DATA_WIFI_PASS_SIZE));
 
 		os_printf("wifi: name: `%s`, pass: `%s` \n", config.ssid, config.password);
 
@@ -418,6 +417,7 @@ bool set_station_info(struct wifi_info* info, bool connect)
 					result = false;
 				}
 			}
+			///@todo надо проверить работу статического назначения ip
 			/*else if(info->ip != 0)*/
 			/*{*/
 				/*if(wifi_station_dhcpc_status() != DHCP_STOPPED)*/
@@ -443,16 +443,16 @@ bool set_station_info(struct wifi_info* info, bool connect)
 					/*}*/
 				/*}*/
 			/*}*/
-		}
 
-		if(result)
-		{ // завод таймера для проверки соеденения
-			last_error = 0;
-			memset(target_ssid, 0, MAX_SSID_LENGTH);
-			memcpy(target_ssid, config.ssid, strlen(config.ssid));
+			if(result)
+			{ // завод таймера для проверки соеденения
+				last_error = 0;
+				memset(target_ssid, 0, MAX_SSID_LENGTH);
+				memcpy(target_ssid, config.ssid, strlen(config.ssid));
 
-			os_timer_setfn(&check_station_timer, wifi_check_station_state, NULL);
-			os_timer_arm(&check_station_timer, WIFI_STATION_CHECK_TIMER, false);
+				os_timer_setfn(&check_station_timer, wifi_check_station_state, NULL);
+				os_timer_arm(&check_station_timer, WIFI_STATION_CHECK_TIMER, false);
+			}
 		}
 	}
 	else
@@ -473,8 +473,13 @@ const char* wifi_get_last_error()
 	return index != 0 ? reasons[index] : NULL;
 }
 
-bool get_wifi_ip_info(struct ip_info* ip_info)
+bool wifi_get_ip(struct ip_info* ip_info)
 {
 	WIFI_INTERFACE i = wifi_get_opmode() == STATION_MODE ?  STATION_IF : SOFTAP_IF;
 	return wifi_get_ip_info(i, ip_info);
 }
+
+/**
+ * @}
+ * @}
+ */

@@ -23,9 +23,8 @@ SUBDIRS=    	\
 	user   		\
 	driver		\
 	light_http	\
-	flash		\
+	data		\
 	mesh		
-	#cstl/src
 
 ifeq ($(FLAVOR),debug)
 SUBDIRS += \
@@ -50,22 +49,12 @@ TARGET_LDFLAGS =		\
 	--longcalls \
 	--text-section-literals
 
-#ifeq ($(FLAVOR),debug)
-    ##TARGET_LDFLAGS += -g -ggdb -O2
-    ##TARGET_LDFLAGS += -g -ggdb -Og
-#endif
-
-#ifeq ($(FLAVOR),release)
-    ##TARGET_LDFLAGS += -g -O0
-#endif
-
 COMPONENTS_eagle.app.v6 = \
 	user/libuser.a	\
 	driver/libdriver.a \
 	light_http/liblight_http.a \
-	flash/libflash.a \
+	data/libdata.a \
 	mesh/libmesh.a  
-	#cstl/src/libcstl.a
 	
 
 ifeq ($(FLAVOR),debug)
@@ -140,7 +129,8 @@ DDEFINES +=				\
 # Required for each makefile to inherit from the parent
 #
 
-INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)driver -I $(PDIR)light_http -I $(PDIR)flash -I $(PDIR)mesh
+#INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)driver -I $(PDIR)light_http -I $(PDIR)flash -I $(PDIR)mesh
+INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)driver 
 sinclude $(SDK_PATH)/Makefile
 
 .PHONY: FORCE

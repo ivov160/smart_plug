@@ -11,7 +11,7 @@
 #     a generated lib/image xxx.a ()
 #
 ifndef PDIR
-GEN_LIBS = libflash.a
+GEN_LIBS = libdata.a
 endif
 
 

@@ -9,13 +9,32 @@
 #include "lwip/stats.h"
 #include "lwip/udp.h"
 
-#include "mesh.h"
+#include "../mesh/mesh.h"
 
+/**
+ * @defgroup user User 
+ * @defgroup user_mesh User mesh
+ * @brief Пользовательский код для mesh
+ *
+ * @addtogroup user
+ * @{
+ * @addtogroup user_mesh
+ * @{
+ */
+
+/** 
+ * @brief Стуктура описывающая контекст mesg для esp
+ */
 struct mesh_ctx
 {
-	uint32_t port;
-	struct udp_pcb* socket;
-	struct mesh_message_handlers* handlers;
+	uint32_t port;									///< порт на котором слушаются пакеты
+	struct udp_pcb* socket;							///< открытый сокет (используется LwIP RAW API)
+	struct mesh_message_handlers* handlers;			///< список обработчиков команд
 };
+
+/**
+ * @}
+ * @}
+ */
 
 #endif
