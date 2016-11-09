@@ -1,0 +1,19 @@
+#file ./.output/eagle/debug/image/eagle.app.v6.out
+#set remote hardware-breakpoint-limit 1
+#set remote hardware-watchpoint-limit 1
+#set debug xtensa 4
+#target remote /dev/ttyUSB0
+#tui disable
+file ./.output/eagle/debug/image/eagle.app.v6.out
+#set remotedebug 1
+set remotelogfile gdb_rsp_logfile.txt
+set remote hardware-breakpoint-limit 1
+set remote hardware-watchpoint-limit 1
+set debug xtensa 4
+tui enable
+set serial baud 115200
+target remote /dev/ttyUSB0
+hbr http_status_handler
+#hbr private_flash_hal_check_crc
+#hbr flash_hal_read_write
+#hbr flash_hal_read
